@@ -563,6 +563,9 @@
           "touchscreenPackage": true,
           "networkCoprocessor": true,
           "ethernetSelectable": true,
+          "presenceSensor": {
+            "type": "ld2410"
+          },
           "backlightPwmFrequency": {
             "wifi": "100Hz",
             "ethernet": "20000Hz"

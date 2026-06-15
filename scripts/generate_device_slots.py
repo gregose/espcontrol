@@ -326,6 +326,14 @@ def package_file_text(device: dict) -> str:
                 "fw_update",
                 f"!include ../../common/addon/firmware_update{firmware_update_suffix}.yaml",
             ),
+        ]
+    )
+    if package.get("presenceSensor"):
+        lines.append(
+            include_line("presence_ld2410", "!include device/presence_ld2410.yaml")
+        )
+    lines.extend(
+        [
             "",
             "  # ---------------------------------------------------------------------------",
             "  # Screens (loading must be first page for LVGL startup)",

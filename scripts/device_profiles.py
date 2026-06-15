@@ -309,6 +309,15 @@ def validate_package(slug: str, device: dict[str, Any], errors: list[str]) -> No
         if not isinstance(chunks, int) or isinstance(chunks, bool) or chunks not in (4, 8):
             errors.append(device_error(slug, "firmware.package.subpageConfigChunks must be 4 or 8 when set"))
 
+    if "presenceSensor" in package:
+        presence = package["presenceSensor"]
+        if not isinstance(presence, dict):
+            errors.append(device_error(slug, "firmware.package.presenceSensor must be an object when set"))
+        elif presence.get("type") not in ("ld2410",):
+            errors.append(
+                device_error(slug, 'firmware.package.presenceSensor.type must be "ld2410" when set')
+            )
+
     substitutions = package.get("substitutions")
     if not isinstance(substitutions, dict) or not substitutions:
         errors.append(device_error(slug, "firmware.package.substitutions must be a non-empty object"))
