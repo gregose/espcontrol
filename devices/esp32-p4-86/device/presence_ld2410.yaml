@@ -60,6 +60,7 @@ binary_sensor:
       number: GPIO22    # third P3 pin (VERIFY; clear of Ethernet RMII)
       mode:
         input: true
+        pulldown: true
 
 # ---------------------------------------------------------------------------
 # Distance / energy / light readings
