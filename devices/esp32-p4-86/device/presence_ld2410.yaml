@@ -197,7 +197,15 @@ switch:
       name: "Radar Engineering Mode"
       restore_mode: RESTORE_DEFAULT_OFF
     # LD2410B ships with BLE on (default password "HiLink"). For a fixed wall
-    # install, expose the switch and default it off to remove the open radio.
+    # install, expose the switch and turn it off at boot to remove the open radio.
     bluetooth:
       name: "Radar Bluetooth"
+      id: ld2410_bluetooth
       restore_mode: RESTORE_DEFAULT_OFF
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - delay: 5s
+        - switch.turn_off: ld2410_bluetooth
