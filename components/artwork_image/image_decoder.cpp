@@ -93,6 +93,62 @@ void ImageDecoder::draw_rgb565_block(int x, int y, int w, int h, const uint8_t *
   }
 }
 
+void ImageDecoder::draw_rgb565_frame(int width, int height, size_t stride_bytes,
+                                     const uint8_t *data) {
+  if (this->failed_ || !data || width <= 0 || height <= 0 ||
+      stride_bytes < static_cast<size_t>(width) * 2) {
+    return;
+  }
+  int bpp_bytes = this->image_->get_bpp() / 8;
+  if (bpp_bytes < 2) return;
+
+  int content_width = this->image_->decode_content_width_ > 0
+                          ? this->image_->decode_content_width_
+                          : this->image_->decode_buffer_width_;
+  int content_height = this->image_->decode_content_height_ > 0
+                           ? this->image_->decode_content_height_
+                           : this->image_->decode_buffer_height_;
+  if (content_width <= 0 || content_height <= 0) return;
+
+  int start_x = std::max(0, this->x_offset_);
+  int start_y = std::max(0, this->y_offset_);
+  int end_x = std::min(this->image_->decode_buffer_width_, this->x_offset_ + content_width);
+  int end_y = std::min(this->image_->decode_buffer_height_, this->y_offset_ + content_height);
+  if (bpp_bytes == 2 && this->x_offset_ == 0 && this->y_offset_ == 0 &&
+      width == this->image_->decode_buffer_width_ && height == this->image_->decode_buffer_height_ &&
+      content_width == width && content_height == height) {
+    size_t row_bytes = static_cast<size_t>(width) * 2;
+    if (stride_bytes == row_bytes) {
+      memcpy(this->image_->decode_buffer_, data, row_bytes * height);
+    } else {
+      for (int y = 0; y < height; y++) {
+        memcpy(this->image_->decode_buffer_ + static_cast<size_t>(y) * row_bytes,
+               data + static_cast<size_t>(y) * stride_bytes, row_bytes);
+      }
+    }
+    return;
+  }
+
+  std::vector<size_t> source_x_offsets(static_cast<size_t>(std::max(0, end_x - start_x)));
+  for (int dst_x = start_x; dst_x < end_x; dst_x++) {
+    int src_x = std::min(width - 1, (dst_x - this->x_offset_) * width / content_width);
+    source_x_offsets[dst_x - start_x] = static_cast<size_t>(src_x) * 2;
+  }
+  for (int dst_y = start_y; dst_y < end_y; dst_y++) {
+    int src_y = std::min(height - 1, (dst_y - this->y_offset_) * height / content_height);
+    const uint8_t *source_row = data + static_cast<size_t>(src_y) * stride_bytes;
+    uint8_t *destination =
+        this->image_->decode_buffer_ + this->image_->get_position_(start_x, dst_y);
+    for (int dst_x = start_x; dst_x < end_x; dst_x++) {
+      const uint8_t *source = source_row + source_x_offsets[dst_x - start_x];
+      destination[0] = source[0];
+      destination[1] = source[1];
+      if (bpp_bytes > 2) destination[2] = 0xFF;
+      destination += bpp_bytes;
+    }
+  }
+}
+
 DownloadBuffer::DownloadBuffer(size_t size) : size_(size) {
   this->buffer_ = this->allocator_.allocate(size);
   this->reset();
@@ -103,20 +159,24 @@ DownloadBuffer::DownloadBuffer(size_t size) : size_(size) {
 }
 
 uint8_t *DownloadBuffer::data(size_t offset) {
-  if (offset > this->size_) {
-    ESP_LOGE(TAG, "Tried to access beyond download buffer bounds!!!");
-    return this->buffer_;
+  if (!this->buffer_ || offset > this->size_) {
+    ESP_LOGE(TAG, "Download buffer is unavailable or access is beyond its bounds");
+    return nullptr;
   }
   return this->buffer_ + offset;
 }
 
 size_t DownloadBuffer::read(size_t len) {
+  if (!this->buffer_) {
+    this->reset();
+    return 0;
+  }
   if (len > this->unread_) {
     ESP_LOGE(TAG, "Decoder consumed %zu bytes, but only %zu were buffered", len, this->unread_);
     len = this->unread_;
   }
   this->unread_ -= len;
-  if (this->unread_ > 0) {
+  if (len > 0 && this->unread_ > 0) {
     memmove(this->data(), this->data(len), this->unread_);
   }
   return this->unread_;
@@ -144,6 +204,36 @@ size_t DownloadBuffer::resize(size_t size) {
     this->reset();
     return 0;
   }
+}
+
+void DownloadBuffer::shrink_to(size_t size) {
+  this->reset();
+  if (this->size_ <= size) {
+    return;
+  }
+  this->allocator_.deallocate(this->buffer_, this->size_);
+  this->buffer_ = nullptr;
+  this->size_ = 0;
+  if (size == 0) {
+    return;
+  }
+  this->buffer_ = this->allocator_.allocate(size);
+  if (!this->buffer_) {
+    ESP_LOGW(TAG, "allocation of shrunken download buffer failed: %zu bytes", size);
+    return;
+  }
+  this->size_ = size;
+}
+
+bool DownloadBuffer::adopt(uint8_t *buffer, size_t size) {
+  if (!buffer || size == 0) return false;
+  if (buffer != this->buffer_) {
+    this->allocator_.deallocate(this->buffer_, this->size_);
+    this->buffer_ = buffer;
+  }
+  this->size_ = size;
+  this->unread_ = size;
+  return true;
 }
 
 }  // namespace artwork_image

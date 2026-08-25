@@ -5,6 +5,10 @@
 #include <utility>
 #include <vector>
 
+#include "ha_read_coordinator.h"
+#include "home_assistant_binding_service.h"
+#include "espcontrol_app_core.h"
+
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
 #endif
@@ -17,9 +21,14 @@ using HomeAssistantStateCallback = std::function<void(esphome::StringRef)>;
 using HomeAssistantActionResponseCallback =
   std::function<void(const esphome::api::ActionResponse &)>;
 
-inline bool ha_entity_state_unavailable_ref(const std::string &entity_id,
-                                            esphome::StringRef state);
-inline uint32_t &ha_subscription_generation();
+#ifndef ESPCONTROL_HA_SUBSCRIPTION_SCOPE_CONSTANTS_DEFINED
+constexpr uint32_t HA_SUBSCRIPTION_SCOPE_ALL = 0;
+constexpr uint32_t HA_SUBSCRIPTION_SCOPE_DEFAULT = 1u << 0;
+constexpr uint32_t HA_SUBSCRIPTION_SCOPE_COVER_ART = 1u << 1;
+constexpr uint32_t HA_SUBSCRIPTION_SCOPE_PHASE3 = 1u << 2;
+constexpr uint32_t HA_SUBSCRIPTION_SCOPE_COVER_ART_PROGRESS = 1u << 3;
+#define ESPCONTROL_HA_SUBSCRIPTION_SCOPE_CONSTANTS_DEFINED 1
+#endif
 
 inline bool ha_api_available() {
   return esphome::api::global_api_server != nullptr;
@@ -33,11 +42,9 @@ inline bool ha_api_state_connected() {
   return ha_api_available() && esphome::api::global_api_server->is_connected_with_state_subscription();
 }
 
-constexpr uint32_t HA_UNAVAILABLE_STATE_RETRY_INTERVAL_MS = 5000;
-constexpr uint32_t HA_UNAVAILABLE_STATE_RETRY_RESPONSE_TIMEOUT_MS = 10000;
 constexpr size_t HA_READ_INTERNAL_FREE_MIN_BYTES = 8 * 1024;
 constexpr size_t HA_READ_INTERNAL_LARGEST_MIN_BYTES = 4 * 1024;
-constexpr size_t HA_ACTION_INTERNAL_FREE_MIN_BYTES = 12 * 1024;
+constexpr size_t HA_ACTION_INTERNAL_FREE_MIN_BYTES = 8 * 1024;
 constexpr size_t HA_ACTION_INTERNAL_LARGEST_MIN_BYTES = 4 * 1024;
 
 inline bool ha_internal_heap_available(const char *stage,
@@ -60,163 +67,135 @@ inline bool ha_internal_heap_available(const char *stage,
   return true;
 }
 
-struct HaUnavailableStateRetryRef {
-  std::string entity_id;
-  std::shared_ptr<HomeAssistantStateCallback> callback;
-  uint32_t generation = 0;
-  uint32_t last_request_ms = 0;
-  bool waiting_for_response = false;
-  bool unavailable = false;
+struct EspHomeHaReadTransport {
+  using State = esphome::StringRef;
+  using Callback = HomeAssistantStateCallback;
+
+  bool available() const { return ha_api_available(); }
+  bool state_connected() const { return ha_api_state_connected(); }
+
+  void subscribe(const std::string &entity_id,
+                 const std::string &attribute,
+                 Callback callback) {
+    esphome::api::global_api_server->subscribe_home_assistant_state(
+        entity_id, attribute, std::move(callback));
+  }
 };
 
-struct HaDeferredStateRequest {
-  std::string entity_id;
-  std::string attribute;
-  std::shared_ptr<HomeAssistantStateCallback> callback;
-  uint32_t generation = 0;
-  bool has_attribute = false;
+struct EspHomeHaHeapProbe {
+  bool available(const char *stage, size_t min_free, size_t min_largest) const {
+    return ha_internal_heap_available(stage, min_free, min_largest);
+  }
 };
 
-inline std::vector<HaUnavailableStateRetryRef> &ha_unavailable_state_retry_refs() {
-  static std::vector<HaUnavailableStateRetryRef> refs;
-  return refs;
+using EspHomeHaReadCoordinator = HaReadCoordinator<EspHomeHaReadTransport, EspHomeHaHeapProbe>;
+using EspHomeHaBindingService =
+    HomeAssistantBindingService<EspHomeHaReadTransport, EspHomeHaHeapProbe>;
+
+inline EspHomeHaBindingService &pre_core_ha_binding_service() {
+  static EspHomeHaBindingService service;
+  return service;
 }
 
-inline std::vector<HaDeferredStateRequest> &ha_deferred_state_requests() {
-  static std::vector<HaDeferredStateRequest> requests;
-  return requests;
+inline bool &pre_core_ha_binding_service_is_active() {
+  static bool active = false;
+  return active;
 }
 
-inline uint8_t &ha_state_callback_depth() {
-  static uint8_t depth = 0;
-  return depth;
+inline EspHomeHaBindingService &ha_binding_service() {
+  if (auto *core = espcontrol::active_espcontrol_app_core(); core != nullptr &&
+      !pre_core_ha_binding_service_is_active()) {
+    return core->home_assistant_binding_service<EspHomeHaBindingService>();
+  }
+  // ESPHome can reset subscriptions before the application core starts. Once
+  // that happens, preserve this service for the firmware lifetime so callback
+  // ownership and deferred subscriptions never switch to a different object.
+  pre_core_ha_binding_service_is_active() = true;
+  return pre_core_ha_binding_service();
 }
 
-inline void ha_reset_unavailable_state_retries() {
-  ha_unavailable_state_retry_refs().clear();
+inline EspHomeHaReadCoordinator &ha_read_coordinator() {
+  return ha_binding_service().read_coordinator();
+}
+
+inline void *&ha_callback_owner() {
+  return ha_binding_service().callback_owner_ref();
+}
+
+class HaCallbackOwnerScope {
+ public:
+  explicit HaCallbackOwnerScope(void *owner)
+      : scope_(ha_binding_service().callback_owner_scope(owner)) {}
+ private:
+  EspHomeHaBindingService::CallbackOwnerScope scope_;
+};
+
+inline void ha_release_callbacks_for_owner(void *owner) { ha_read_coordinator().release_owner(owner); }
+
+inline uint32_t &ha_subscription_generation() {
+  return ha_read_coordinator().generation_ref();
+}
+
+inline void ha_reset_subscription_callbacks(uint32_t scope = HA_SUBSCRIPTION_SCOPE_ALL) {
+  ha_read_coordinator().reset_subscriptions(scope);
+}
+#define ESPCONTROL_HA_SUBSCRIPTION_HELPERS_DEFINED 1
+
+inline void ha_log_subscription_diagnostics(const char *stage) {
+  auto &coordinator = ha_read_coordinator();
+  size_t upstream_subscriptions = 0;
+#ifdef USE_API_HOMEASSISTANT_STATES
+  if (ha_api_available()) {
+    upstream_subscriptions = esphome::api::global_api_server->get_state_subs().size();
+  }
+#endif
+  ESP_LOGD("ha", "Subscriptions %s: active=%u retained=%u channels=%u pending=%u deferred=%u upstream=%u",
+           stage ? stage : "status",
+           static_cast<unsigned>(coordinator.subscription_count()),
+           static_cast<unsigned>(coordinator.retained_channel_count()),
+           static_cast<unsigned>(coordinator.subscription_channel_count()),
+           static_cast<unsigned>(coordinator.pending_read_count()),
+           static_cast<unsigned>(coordinator.deferred_count()),
+           static_cast<unsigned>(upstream_subscriptions));
 }
 
 inline void ha_reset_deferred_state_requests() {
-  ha_deferred_state_requests().clear();
+  ha_read_coordinator().reset_deferred();
 }
-#define ESPCONTROL_HA_RETRY_HELPERS_DEFINED 1
 #define ESPCONTROL_HA_DEFERRED_HELPERS_DEFINED 1
 
-inline void ha_invoke_state_callback(const std::shared_ptr<HomeAssistantStateCallback> &callback,
-                                     esphome::StringRef state) {
-  if (!callback || !*callback) return;
-  uint8_t &depth = ha_state_callback_depth();
-  depth++;
-  (*callback)(state);
-  depth--;
+inline void ha_invalidate_retained_state() {
+  ha_read_coordinator().invalidate_retained_state();
+  ha_log_subscription_diagnostics("client-disconnected");
 }
 
-inline void ha_note_state_retry_result(const std::string &entity_id,
-                                       esphome::StringRef state,
-                                       uint32_t generation) {
-  std::vector<HaUnavailableStateRetryRef> &refs = ha_unavailable_state_retry_refs();
-  for (auto &ref : refs) {
-    if (ref.generation != generation || ref.entity_id != entity_id) continue;
-    ref.unavailable = ha_entity_state_unavailable_ref(entity_id, state);
-    ref.waiting_for_response = false;
-  }
+inline void bump_ha_subscription_generation() {
+  ha_read_coordinator().bump_generation(
+      HA_SUBSCRIPTION_SCOPE_DEFAULT | HA_SUBSCRIPTION_SCOPE_COVER_ART_PROGRESS);
 }
-
-inline void ha_retry_unavailable_states(bool force = false) {
-  if (!ha_api_state_connected()) return;
-  const uint32_t now = esphome::millis();
-  const uint32_t active_generation = ha_subscription_generation();
-  std::vector<HaUnavailableStateRetryRef> &refs = ha_unavailable_state_retry_refs();
-
-  for (auto &ref : refs) {
-    if (ref.generation != active_generation || !ref.unavailable || !ref.callback) continue;
-    if (ref.waiting_for_response) {
-      if (ref.last_request_ms != 0 &&
-          now - ref.last_request_ms < HA_UNAVAILABLE_STATE_RETRY_RESPONSE_TIMEOUT_MS) {
-        continue;
-      }
-      ref.waiting_for_response = false;
-    }
-    if (!force) {
-      if (ref.last_request_ms != 0 &&
-          now - ref.last_request_ms < HA_UNAVAILABLE_STATE_RETRY_INTERVAL_MS) {
-        continue;
-      }
-    }
-
-    if (!ha_internal_heap_available("Home Assistant state retry",
-                                    HA_READ_INTERNAL_FREE_MIN_BYTES,
-                                    HA_READ_INTERNAL_LARGEST_MIN_BYTES)) continue;
-    ref.waiting_for_response = true;
-    ref.last_request_ms = now;
-    const std::string entity_id = ref.entity_id;
-    const uint32_t generation = ref.generation;
-    auto callback = ref.callback;
-    esphome::api::global_api_server->get_home_assistant_state(
-      entity_id, {},
-      [entity_id, generation, callback](esphome::StringRef state) {
-        ha_note_state_retry_result(entity_id, state, generation);
-        ha_invoke_state_callback(callback, state);
-      });
-  }
-}
-
-inline bool ha_queue_deferred_state_request(const std::string &entity_id,
-                                            const std::string &attribute,
-                                            std::shared_ptr<HomeAssistantStateCallback> callback,
-                                            bool has_attribute) {
-  constexpr size_t HA_DEFERRED_STATE_REQUEST_MAX = 64;
-  if (!callback || !*callback) return false;
-  std::vector<HaDeferredStateRequest> &requests = ha_deferred_state_requests();
-  if (requests.size() >= HA_DEFERRED_STATE_REQUEST_MAX) {
-    ESP_LOGW("ha", "Dropping deferred Home Assistant state request for %s: queue full",
-             entity_id.c_str());
-    return false;
-  }
-  requests.push_back({
-    entity_id,
-    attribute,
-    std::move(callback),
-    ha_subscription_generation(),
-    has_attribute,
-  });
-  return true;
-}
+#define ESPCONTROL_HA_GENERATION_HELPERS_DEFINED 1
 
 inline void ha_flush_deferred_state_requests(size_t max_requests = 8) {
-  if (ha_state_callback_depth() != 0 || !ha_api_state_connected()) return;
-  std::vector<HaDeferredStateRequest> &requests = ha_deferred_state_requests();
-  size_t processed = 0;
-  while (!requests.empty() && processed < max_requests) {
-    HaDeferredStateRequest request = std::move(requests.front());
-    requests.erase(requests.begin());
-    if (!request.callback || !*request.callback) continue;
-    if (request.generation != ha_subscription_generation()) continue;
-    if (!ha_internal_heap_available("deferred Home Assistant state request",
-                                    HA_READ_INTERNAL_FREE_MIN_BYTES,
-                                    HA_READ_INTERNAL_LARGEST_MIN_BYTES)) {
-      requests.insert(requests.begin(), std::move(request));
-      return;
-    }
+  ha_read_coordinator().flush(
+      max_requests, HA_READ_INTERNAL_FREE_MIN_BYTES, HA_READ_INTERNAL_LARGEST_MIN_BYTES);
+}
 
-    auto callback = request.callback;
-    if (request.has_attribute) {
-      esphome::api::global_api_server->get_home_assistant_state(
-        std::move(request.entity_id),
-        std::move(request.attribute),
-        [callback](esphome::StringRef state) {
-          ha_invoke_state_callback(callback, state);
-        });
-    } else {
-      esphome::api::global_api_server->get_home_assistant_state(
-        std::move(request.entity_id),
-        {},
-        [callback](esphome::StringRef state) {
-          ha_invoke_state_callback(callback, state);
-        });
+// ESPHome normally advertises Home Assistant state subscriptions once during
+// the API handshake. Card configuration can rebuild the grid after that
+// handshake, so re-announce the expanded list to the existing Home Assistant
+// client instead of waiting for a reconnect before the cards receive data.
+inline void ha_reannounce_state_subscriptions() {
+  if (!ha_api_state_connected()) return;
+  for (const auto &client : esphome::api::global_api_server->active_clients()) {
+    if (!client) continue;
+    const char *client_name = client->get_name();
+    if (client_name == nullptr ||
+        std::string(client_name).find("Home Assistant") == std::string::npos) {
+      continue;
     }
-    processed++;
+    client->on_subscribe_home_assistant_states_request();
   }
+  ha_log_subscription_diagnostics("grid-reannounce");
 }
 
 inline bool ha_action_begin(esphome::api::HomeassistantActionRequest &req,
@@ -236,6 +215,22 @@ inline void ha_action_add_data(esphome::api::HomeassistantActionRequest &req,
                                const char *key,
                                const char *value) {
   auto &kv = req.data.emplace_back();
+  kv.key = decltype(kv.key)(key ? key : "");
+  kv.value = decltype(kv.value)(value ? value : "");
+}
+
+inline void ha_action_add_data_template(esphome::api::HomeassistantActionRequest &req,
+                                        const char *key,
+                                        const char *value) {
+  auto &kv = req.data_template.emplace_back();
+  kv.key = decltype(kv.key)(key ? key : "");
+  kv.value = decltype(kv.value)(value ? value : "");
+}
+
+inline void ha_action_add_variable(esphome::api::HomeassistantActionRequest &req,
+                                   const char *key,
+                                   const char *value) {
+  auto &kv = req.variables.emplace_back();
   kv.key = decltype(kv.key)(key ? key : "");
   kv.value = decltype(kv.value)(value ? value : "");
 }
@@ -290,73 +285,31 @@ inline bool ha_cancel_action_response_callback(uint32_t call_id, const char *err
 }
 
 inline bool ha_subscribe_state(const std::string &entity_id,
-                               HomeAssistantStateCallback callback) {
-  if (!ha_api_available() || entity_id.empty() || !callback) return false;
-  auto callback_ref = std::make_shared<HomeAssistantStateCallback>(std::move(callback));
-  const uint32_t generation = ha_subscription_generation();
-  ha_unavailable_state_retry_refs().push_back({
-    entity_id,
-    callback_ref,
-    generation,
-    0,
-    false,
-    false,
-  });
-  esphome::api::global_api_server->subscribe_home_assistant_state(
-    entity_id, {},
-    [entity_id, callback_ref, generation](esphome::StringRef state) {
-      ha_note_state_retry_result(entity_id, state, generation);
-      ha_invoke_state_callback(callback_ref, state);
-    });
-  return true;
-}
-
-inline bool ha_get_state(const std::string &entity_id,
-                         HomeAssistantStateCallback callback) {
-  if (!ha_api_available() || entity_id.empty() || !callback) return false;
-  if (!ha_internal_heap_available("Home Assistant state request",
-                                  HA_READ_INTERNAL_FREE_MIN_BYTES,
-                                  HA_READ_INTERNAL_LARGEST_MIN_BYTES)) return false;
-  auto callback_ref = std::make_shared<HomeAssistantStateCallback>(std::move(callback));
-  if (ha_state_callback_depth() != 0) {
-    return ha_queue_deferred_state_request(entity_id, std::string(), callback_ref, false);
-  }
-  esphome::api::global_api_server->get_home_assistant_state(
-    entity_id, {},
-    [callback_ref](esphome::StringRef state) {
-      ha_invoke_state_callback(callback_ref, state);
-    });
-  return true;
+                               HomeAssistantStateCallback callback,
+                               uint32_t scope = HA_SUBSCRIPTION_SCOPE_DEFAULT) {
+  return ha_read_coordinator().subscribe(entity_id, std::string(), std::move(callback), scope, ha_callback_owner());
 }
 
 inline bool ha_subscribe_attribute(const std::string &entity_id,
                                    const std::string &attribute,
-                                   HomeAssistantStateCallback callback) {
-  if (!ha_api_available() || entity_id.empty() || !callback) return false;
-  auto callback_ref = std::make_shared<HomeAssistantStateCallback>(std::move(callback));
-  esphome::api::global_api_server->subscribe_home_assistant_state(
-    entity_id, attribute,
-    [callback_ref](esphome::StringRef state) {
-      ha_invoke_state_callback(callback_ref, state);
-    });
-  return true;
+                                   HomeAssistantStateCallback callback,
+                                   uint32_t scope = HA_SUBSCRIPTION_SCOPE_DEFAULT,
+                                   bool retain_latest = false) {
+  return ha_read_coordinator().subscribe(
+      entity_id, attribute, std::move(callback), scope, ha_callback_owner(), retain_latest);
 }
 
-inline bool ha_get_attribute(const std::string &entity_id,
-                             const std::string &attribute,
-                             HomeAssistantStateCallback callback) {
-  if (!ha_api_available() || entity_id.empty() || !callback) return false;
-  if (!ha_internal_heap_available("Home Assistant attribute request",
-                                  HA_READ_INTERNAL_FREE_MIN_BYTES,
-                                  HA_READ_INTERNAL_LARGEST_MIN_BYTES)) return false;
-  auto callback_ref = std::make_shared<HomeAssistantStateCallback>(std::move(callback));
-  if (ha_state_callback_depth() != 0) {
-    return ha_queue_deferred_state_request(entity_id, attribute, callback_ref, true);
+inline bool ha_read_retained_attribute(const std::string &entity_id,
+                                       const std::string &attribute,
+                                       HomeAssistantStateCallback callback) {
+  void *owner = ha_callback_owner();
+  if (owner != nullptr) {
+    callback = [owner, callback = std::move(callback)](esphome::StringRef state) {
+      if (!lv_obj_is_valid(static_cast<lv_obj_t *>(owner))) return;
+      if (callback) callback(state);
+    };
   }
-  esphome::api::global_api_server->get_home_assistant_state(
-    entity_id, attribute,
-    [callback_ref](esphome::StringRef state) {
-      ha_invoke_state_callback(callback_ref, state);
-    });
-  return true;
+  return ha_read_coordinator().read_retained(
+      entity_id, attribute, std::move(callback), true,
+      HA_READ_INTERNAL_FREE_MIN_BYTES, HA_READ_INTERNAL_LARGEST_MIN_BYTES, owner);
 }

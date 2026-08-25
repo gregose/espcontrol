@@ -39,6 +39,7 @@ from esphome.components.rpi_dpi_rgb.display import (
 )
 import esphome.config_validation as cv
 from esphome.const import (
+    CONF_AUTO_CLEAR_ENABLED,
     CONF_BLUE,
     CONF_COLOR_ORDER,
     CONF_CS_PIN,
@@ -46,7 +47,6 @@ from esphome.const import (
     CONF_DATA_RATE,
     CONF_DC_PIN,
     CONF_DIMENSIONS,
-    CONF_DISABLED,
     CONF_ENABLE_PIN,
     CONF_GREEN,
     CONF_HSYNC_PIN,
@@ -55,8 +55,6 @@ from esphome.const import (
     CONF_INIT_SEQUENCE,
     CONF_INVERT_COLORS,
     CONF_LAMBDA,
-    CONF_MIRROR_X,
-    CONF_MIRROR_Y,
     CONF_MODEL,
     CONF_NUMBER,
     CONF_RED,
@@ -94,6 +92,11 @@ for module_info in pkgutil.iter_modules(models.__path__):
 MODELS = DriverChip.get_models()
 
 
+def model_dimensions(config, model):
+    dimensions = model.get_dimensions(config)
+    return dimensions[0], dimensions[1]
+
+
 def data_pin_validate(value):
     """
     It is safe to use strapping pins as RGB output data bits, as they are outputs only,
@@ -118,16 +121,7 @@ def data_pin_set(length):
 
 def model_schema(config):
     model = MODELS[config[CONF_MODEL].upper()]
-    transform = cv.Any(
-        cv.Schema(
-            {
-                cv.Required(CONF_MIRROR_X): cv.boolean,
-                cv.Required(CONF_MIRROR_Y): cv.boolean,
-                **model.swap_xy_schema(),
-            }
-        ),
-        cv.one_of(CONF_DISABLED, lower=True),
-    )
+    transform = model.transform_schema()
     # RPI model does not use an init sequence, indicates with empty list
     if model.initsequence is None:
         # Custom model requires an init sequence
@@ -226,11 +220,36 @@ def _config_schema(config):
         extra=cv.ALLOW_EXTRA,
     )(config)
     schema = model_schema(config)
-    return cv.All(
+    config = cv.All(
         schema,
         cv.only_on_esp32,
         only_on_variant(supported=[VARIANT_ESP32S3, VARIANT_ESP32P4]),
     )(config)
+    model = MODELS[config[CONF_MODEL].upper()]
+    width, height = model_dimensions(config, model)
+    has_writer = requires_buffer(config) or config.get(CONF_AUTO_CLEAR_ENABLED) is True
+    try:
+        display.add_metadata(
+            config[CONF_ID],
+            width,
+            height,
+            has_hardware_rotation=False,
+            byte_order=config[CONF_BYTE_ORDER],
+            has_writer=has_writer,
+            rotation=model.rotation_as_transform(config),
+            draw_rounding=config[CONF_DRAW_ROUNDING],
+        )
+    except TypeError as err:
+        if "unexpected keyword argument" not in str(err):
+            raise
+        display.add_metadata(
+            config[CONF_ID],
+            width,
+            height,
+            has_writer=has_writer,
+            has_hardware_rotation=False,
+        )
+    return config
 
 
 CONFIG_SCHEMA = _config_schema
@@ -256,7 +275,7 @@ FINAL_VALIDATE_SCHEMA = _final_validate
 
 async def to_code(config):
     model = MODELS[config[CONF_MODEL].upper()]
-    width, height, _offset_width, _offset_height = model.get_dimensions(config)
+    width, height = model_dimensions(config, model)
     var = cg.new_Pvariable(config[CONF_ID], width, height)
     cg.add(var.set_model(model.name))
     if enable_pin := config.get(CONF_ENABLE_PIN):

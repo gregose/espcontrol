@@ -1,17 +1,17 @@
 ---
-title: Manual ESPHome Setup
+title: Manual Setup
 description:
   How to add EspControl to ESPHome manually, compile the firmware, and install it by USB or OTA.
 ---
 
-# Manual ESPHome Setup
+# Manual Setup
 
 The normal [browser install](/getting-started/install) is the easiest route. Use this page if you prefer to manage EspControl from ESPHome, want to compile the firmware yourself, or need to install from the ESPHome Device Builder dashboard.
 
 ## What You Need
 
 - A supported ESP32 panel.
-- ESPHome Device Builder in Home Assistant, or the ESPHome command line on your computer.
+- ESPHome 2026.7.4 or newer, using Device Builder in Home Assistant or the ESPHome command line on your computer.
 - A USB-C data cable for the first install.
 - Your WiFi name and password, unless you are using an advanced wired Ethernet option.
 
@@ -25,8 +25,10 @@ Each screen uses a different ESPHome package file. Pick the one that matches you
 
 | Panel | Package file |
 | --- | --- |
-| 10.1-inch JC8012P4A1 | `devices/guition-esp32-p4-jc8012p4a1/packages.yaml` |
+| 10.1-inch JC8012P4A1 original panel, rear case `2627` or lower | `devices/guition-esp32-p4-jc8012p4a1/packages.yaml` |
+| 10.1-inch JC8012P4A1 new panel, rear case `2628` or higher | `devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml` |
 | 7-inch JC1060P470 | `devices/guition-esp32-p4-jc1060p470/packages.yaml` |
+| 7-inch JC1060P470 new panel, rear label has `V2` in the SKU / material number | `devices/guition-esp32-p4-jc1060p470-v2/packages.yaml` |
 | 4.3-inch JC4880P443 | `devices/guition-esp32-p4-jc4880p443/packages.yaml` |
 | 4-inch ESP32-P4 86 Panel | `devices/esp32-p4-86/packages.yaml` |
 | 4-inch 4848S040 | `devices/guition-esp32-s3-4848s040/packages.yaml` |
@@ -75,9 +77,13 @@ espcontrol_web_username: "admin"
 espcontrol_web_password: "choose-a-strong-password"
 ```
 
-Then add the `web_server_auth` package to your EspControl device YAML:
+Then point the EspControl web auth substitutions at those secrets and add the `web_server_auth` package to your EspControl device YAML:
 
 ```yaml
+substitutions:
+  espcontrol_web_username: !secret espcontrol_web_username
+  espcontrol_web_password: !secret espcontrol_web_password
+
 packages:
   setup:
     url: https://github.com/jtenniswood/espcontrol/
@@ -89,9 +95,19 @@ packages:
     refresh: 1sec
 ```
 
-After saving, validate the device and install the firmware again. The next time you open the display address in a browser, it will ask for the username and password.
+After saving, validate the device and install the firmware again. The next time you open the display address in a browser, it will ask for the username and password. EspControl uses Digest authentication so the password is not sent directly across your network.
 
-Use a different password for each display. This protects the local web page, but it is not a replacement for normal network security, so do not expose the display directly to the internet.
+If the username or password substitution is missing, ESPHome validation will fail instead of building firmware with placeholder credentials.
+
+Use a different password for each display. For example, one display can point the substitutions at hallway secrets and another can point them at office secrets:
+
+```yaml
+substitutions:
+  espcontrol_web_username: !secret espcontrol_hallway__web_username
+  espcontrol_web_password: !secret espcontrol_hallway__web_password
+```
+
+This protects the local web page, but it is not a replacement for normal network security, so do not expose the display directly to the internet.
 
 ## Advanced: Ethernet Options
 
@@ -102,6 +118,7 @@ Use this template for Ethernet-capable models. Do not add a `wifi:` block. Chang
 | Panel | Ethernet package file |
 | --- | --- |
 | 7-inch JC1060P470 Ethernet model | `devices/guition-esp32-p4-jc1060p470/packages.yaml` |
+| 7-inch JC1060P470 new panel Ethernet model | `devices/guition-esp32-p4-jc1060p470-v2/packages.yaml` |
 | ESP32-P4 86 Panel ETH-2RO | `devices/esp32-p4-86/packages.yaml` |
 
 ```yaml
@@ -114,11 +131,13 @@ substitutions:
 packages:
   setup:
     url: https://github.com/jtenniswood/espcontrol/
-    file: devices/esp32-p4-86/packages.yaml
+    file: devices/guition-esp32-p4-jc1060p470/packages.yaml
     refresh: 1sec
 ```
 
 If Ethernet is unplugged or your network does not give the display an IP address, the display will show an Ethernet setup message. It will not create a WiFi hotspot in this mode.
+
+If you start from a copied device `esphome.yaml` starter file instead of the template above, set `network_transport: "ethernet"` in `substitutions`. Older copied starters may still contain a top-level `wifi:` block; remove that block before validating the Ethernet build.
 
 The `disable_updates: "true"` substitution removes EspControl's built-in GitHub firmware update checker and update controls. ESPHome OTA stays enabled, so you can still install firmware manually once the display is online.
 
@@ -132,7 +151,7 @@ The Ethernet firmware is intentionally different from the normal WiFi firmware:
 
 When switching a display between WiFi firmware and Ethernet firmware, install the new firmware over USB. OTA updates can fail during this change because the currently running firmware and the new firmware use different network hardware.
 
-To switch back to WiFi later, remove `network_transport: ethernet`, add your `wifi:` block again, then recompile and install the firmware over USB.
+To switch back to WiFi later, remove `network_transport: ethernet` from the manual Ethernet template, add your `wifi:` block again, then recompile and install the firmware over USB. If you are using the current JC1060P470 `esphome.yaml` starter file, set `network_transport: "wifi"` instead.
 
 ::: warning Keep the device name simple
 Use lowercase letters, numbers, and hyphens for `name`. For example, `espcontrol-kitchen` is better than `Kitchen Touchscreen`.
@@ -154,7 +173,7 @@ If ESPHome cannot access the USB port directly, choose **Manual download** inste
 1. Wait for the display to join WiFi.
 2. Add it to Home Assistant when the ESPHome integration discovers it.
 3. Open the display address in a browser, for example `http://espcontrol.local`.
-4. Configure cards, colours, brightness, and other settings from the built-in web page.
+4. Configure cards, active colour, brightness, and other settings from the built-in web page.
 5. Follow [Enable Actions](/getting-started/home-assistant-actions) so the display is allowed to control your Home Assistant devices.
 
 ## Updating Later

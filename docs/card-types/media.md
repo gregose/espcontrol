@@ -1,64 +1,47 @@
 ---
 title: Media Cards
 description:
-  How to use media cards on your EspControl panel to control Home Assistant media player entities.
+  How to use media cards on your EspControl panel to control Home Assistant media players.
 ---
 
 # Media
 
-A Media card controls a Home Assistant `media_player` entity. It can work as a simple playback button, a volume control, a track position control, or a now-playing display.
+A Media card controls a Home Assistant `media_player`. Choose a small one-job card, or use **All Controls** for the main playback screen.
 
 ![Wide media card showing now-playing title and artist](/images/card-media.png)
 
-## Setting Up a Media Card
+## Set Up a Media Card
 
-1. Select a card and change its type to **Media**.
-2. Choose the media **Type**:
-   - **Play/Pause Button**
-   - **Previous Button**
-   - **Next Button**
-   - **Volume Button**
-   - **Track Position**
-   - **Now Playing**
-3. Enter the media player entity, for example `media_player.living_room`.
-4. Set a label or icon if the selected type shows those fields.
+1. Select a card and change its type to **Media**. New Media cards start as **Cover Art**.
+2. Choose a **Type** and enter the player entity, such as `media_player.living_room`.
+3. Set a label or icon where the chosen type offers one.
 
-## Playback Buttons
+| Type | Best for |
+|---|---|
+| **All Controls** | Playback, volume, progress, and any supported power or speaker controls in one popup. |
+| **Cover Art** | Showing current artwork; tapping it opens All Controls. |
+| **Track, Album or Playlist** | Playing a saved playlist, source, URL, or other media content. |
+| **Speaker Group** | Opening the speaker-group screen directly. |
+| **Play/Pause**, **Previous**, **Next** | A simple playback shortcut. |
+| **Volume** | Opening a volume control. **Maximum Volume** can cap the level. |
+| **Track Position** | Seeing and, where supported, seeking through the current item. |
+| **Now Playing** | Showing title and artist, with optional progress or play/pause. |
 
-**Play/Pause Button**, **Previous Button**, and **Next Button** send the matching Home Assistant media player action when tapped.
+## What to Expect
 
-For Play/Pause, you can choose whether the card shows its fixed label or the live state, such as **Playing** or **Paused**.
+- Playback buttons send the matching Home Assistant media action.
+- Volume and track position follow changes made elsewhere in Home Assistant. Some players show progress but do not support seeking; some only support volume up and down rather than an exact level.
+- All Controls hides tabs that the selected player does not support. Its speaker tab appears only when compatible speakers are available.
+- For **Track, Album or Playlist**, choose the speaker, then provide the content ID or URI. You can also set the player source or input when the integration uses one.
 
-## Volume Button
+## Cover Art
 
-The Volume Button shows the current volume percentage. Tapping it opens a volume control popup on the panel, where you can adjust the volume without leaving the current page.
+Cover Art is available in square **1×1**, **2×2**, and **3×3** card sizes. It uses one of the panel's shared image slots. ESP32-P4 screens have six slots shared between Camera and Cover Art cards across all pages. If the card shows **Too many**, remove one of those image cards.
 
-Set **Maximum Volume** to cap the panel control below 100%. The popup dial rescales to that maximum, so a 40% cap makes 40% the end of the arc.
+## Speaker Groups
 
-The card watches the media player's `volume_level` attribute, so it also updates when volume changes elsewhere.
-
-## Track Position
-
-Track Position shows playback progress and elapsed time.
-
-- Drag the progress bar to seek within the current track.
-- The card uses Home Assistant's `media_duration`, `media_position`, and `media_position_updated_at` attributes when they are available.
-- You can show a fixed label or the live playback state.
-
-Seeking depends on the media player integration. Some players expose progress but do not support seeking.
-
-## Now Playing
-
-Now Playing shows the media title and artist from Home Assistant.
-
-You can choose optional controls:
-
-- **None** shows only the current title and artist.
-- **Track Position** adds a progress background and lets you seek.
-- **Play/Pause** makes the card tappable so it toggles playback.
-
-Now Playing works best on wider or larger cards because it has more room for track text.
+For speaker groups, first confirm the speakers can join in Home Assistant. EspControl uses the compatible-player list supplied by the configured discovery entity; by default this is `sensor.speaker_group`. The group screen stays hidden when no usable speakers are reported.
 
 ::: info Requires Home Assistant actions
-Media cards send Home Assistant actions from the panel. If tapping a card does nothing, check [Enable Actions](/getting-started/home-assistant-actions).
+Media cards send Home Assistant actions. If a control does not respond, check [Enable Actions](/getting-started/home-assistant-actions).
 :::

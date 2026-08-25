@@ -7,9 +7,10 @@
 # =============================================================================
 
 substitutions:
+  cover_art_placeholder_file: "https://raw.githubusercontent.com/jtenniswood/espcontrol/main/common/assets/cover_art_placeholder.svg"
   device_slug: "guition-esp32-p4-jc8012p4a1"
   firmware_manifest_slug: "guition-esp32-p4-jc8012p4a1"
-  firmware_version: "dev-jc8012p4a1-20260611-livecheck"
+  firmware_version: "dev"
   screen_width: "1280"
   screen_height: "800"
   content_width: "760"
@@ -34,6 +35,11 @@ substitutions:
   main_page_compact_pad_top: "5"
   clock_bar_item_gap: "78"
   clock_bar_visual_gap: "10"
+  voice_clock_bar_hide_code: ""
+  voice_clock_bar_apply_code: ""
+  navigate_voice_target_code: |-
+    ESP_LOGW("navigation", "Voice volume target is not available on this device");
+  voice_interaction_active_condition: "false"
   clock_font_size: "220"
   clock_cx: "640"
   clock_cy: "400"
@@ -42,6 +48,7 @@ substitutions:
   screen_schedule_clock_min_brightness: "1"
   screen_schedule_clock_default_brightness: "10"
   cover_art_size: "800"
+  cover_art_decode_size: "800"
   cover_art_x: "0"
   cover_art_y: "0"
   cover_art_accent_x: "800"
@@ -71,7 +78,21 @@ substitutions:
   cover_art_progress_height: "4"
   cover_art_text_color: "0xFFF5E0"
   cover_art_square_overlay: "false"
-  cover_art_live_image_updates: "true"
+  cover_art_live_image_updates: "false"
+  battery_status_apply_code: |-
+    if (id(battery_status_enabled).state) {
+      const int battery_status_icon_x_box = lv_obj_get_width(id(battery_status_button));
+      const int battery_status_icon_x = clock_bar_right_icons_next_x(
+          clock_bar_right_icons, battery_status_icon_x_box,
+          clock_bar_glyph_width(id(battery_status_icon_label), battery_status_icon_x_box));
+      lv_obj_align(id(battery_status_button), LV_ALIGN_TOP_RIGHT,
+                   battery_status_icon_x, clock_bar_icon_y);
+      lv_obj_clear_flag(id(battery_status_button), LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(id(battery_status_button), LV_OBJ_FLAG_HIDDEN);
+    }
+  battery_status_hide_code: |-
+    lv_obj_add_flag(id(battery_status_button), LV_OBJ_FLAG_HIDDEN);
 
 packages:
   # ---------------------------------------------------------------------------
@@ -79,6 +100,7 @@ packages:
   # ---------------------------------------------------------------------------
   entity_names:    !include ../../common/config/entity_names.yaml
   device:          !include device/device.yaml
+  esp32_c6_firmware_update: !include ../../common/device/esp32_c6_firmware_update.yaml
   icons:           !include ../../common/assets/icons.yaml
   fonts_device:    !include device/fonts.yaml
   button_theme:    !include ../../common/theme/button.yaml
@@ -123,6 +145,7 @@ packages:
   network:         !include ../../common/addon/network.yaml
   memory_diag:     !include ../../common/addon/memory_diagnostics.yaml
   fw_update:       !include ../../common/addon/firmware_update.yaml
+  battery:         !include device/battery.yaml
 
   # ---------------------------------------------------------------------------
   # Screens (loading must be first page for LVGL startup)

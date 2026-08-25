@@ -10,11 +10,11 @@ Playbook: [Add or change a card type](playbooks/add-card-type.md).
 
 Start with the contract, then wire both UI surfaces.
 
-1. Edit `common/config/card_contract.json`.
+1. Edit `product/v2/card_contract.json`.
 2. If the card has web settings or a preview, add or update
-   `src/webserver/types/<type>.js`.
+   `src/webserver/cards/<type>.ts`.
 3. If the card stores options, update option parsing/preservation in
-   `src/webserver/modules/config_codec.js`.
+   `src/webserver/application/config_codec.ts`.
 4. Add or update firmware behavior in `components/espcontrol/button_grid_<type>.h`.
 5. Include the card header from `components/espcontrol/button_grid.h`.
 6. Wire setup and runtime behavior in `components/espcontrol/button_grid_grid.h`.
@@ -36,7 +36,7 @@ already contain older strings.
 1. Update parsing and serialization together.
 2. Keep older values readable unless there is an intentional migration.
 3. Add or update compatibility fixtures in
-   `compatibility/fixtures/product_compatibility.json`.
+   `product/v2/product_compatibility.json`.
 4. Run:
 
 ```bash
@@ -48,11 +48,11 @@ npm run check:product
 
 ## Add a Home Assistant Entity Name
 
-1. Edit `common/config/entity_names.json`.
+1. Edit `product/v2/entity_names.json`.
 2. Run `python3 scripts/build.py`.
 3. Confirm these generated files changed as expected:
    - `common/config/entity_names.yaml`
-   - `src/webserver/modules/entity_catalog.js`
+   - `src/webserver/generated/entity_catalog.ts`
 4. Run:
 
 ```bash
@@ -64,7 +64,7 @@ npm run check:product
 
 Playbook: [Add or change a supported device](playbooks/add-supported-device.md).
 
-1. Add or update the device entry in `devices/manifest.json`.
+1. Add or update the device entry and its modal profile in `product/v2/device_catalog.json`.
 2. Add or update `devices/<slug>/packages.yaml`, `dev.yaml`, `esphome.yaml`, and
    files under `devices/<slug>/device/`.
 3. Confirm the device has the required font roles in `firmware.fonts`.
@@ -73,6 +73,7 @@ Playbook: [Add or change a supported device](playbooks/add-supported-device.md).
 ```bash
 python3 scripts/build.py
 python3 scripts/generate_device_slots.py
+npm run check:firmware-modal-layouts
 npm run check:device-matrix
 npm run check:device-profiles
 npm run check:product
@@ -87,7 +88,7 @@ Playbook: [Change fonts or icons](playbooks/change-fonts-or-icons.md).
 
 Fonts and icons are memory-sensitive on embedded displays.
 
-1. Add icons to `common/assets/icons.json` when the name should be available in
+1. Add icons to `product/v2/icons.json` when the name should be available in
    the setup page.
 2. Add needed glyphs to the relevant `common/assets/*glyphs.yaml` file.
 3. Add or adjust per-device font definitions in
@@ -107,9 +108,10 @@ npm run check:product
 
 ## Change the Web Setup Page
 
-1. Edit `src/webserver/modules/` for shared behavior or `src/webserver/types/`
+1. Edit `src/webserver/application/` for shared behavior or `src/webserver/cards/`
    for card-specific UI.
-2. If adding a shared module, list it in `scripts/web_modules.json`.
+2. Import and call a new shared module installer in the deliberate order in
+   `src/webserver/entry.ts`.
 3. Run:
 
 ```bash
@@ -119,6 +121,9 @@ npm run check:web-browser-smoke
 ```
 
 Commit the rebuilt `docs/public/webserver/*/www.js` bundles when they change.
+The Python command prepares device configuration and delegates bundling to the
+single esbuild API pipeline in `scripts/build_web_bundle.js`; tests use its
+temporary-output mode to avoid relying on tracked bundles.
 
 ## Change Firmware UI Behavior
 

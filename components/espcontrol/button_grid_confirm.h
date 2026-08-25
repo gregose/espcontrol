@@ -55,11 +55,16 @@ inline void switch_confirmation_hide_modal() {
 
 inline void switch_confirmation_confirm() {
   SwitchConfirmationModalUi &ui = switch_confirmation_modal_ui();
-  if (!ui.cfg.entity.empty()) {
+  bool is_garage_command = ui.cfg.type == "garage" && garage_command_mode(ui.cfg.sensor);
+  if (action_script_confirmation_enabled(ui.cfg)) {
+    send_action_card_action(ui.cfg);
+  } else if (is_garage_command) {
+    send_cover_command_action(ui.cfg);
+  } else if (!ui.cfg.entity.empty()) {
     if (ui.turn_on) send_turn_on_action(ui.cfg.entity);
     else send_turn_off_action(ui.cfg.entity);
   }
-  if (ui.btn_obj) {
+  if (ui.btn_obj && !action_script_confirmation_enabled(ui.cfg) && !is_garage_command) {
     if (ui.turn_on) lv_obj_add_state(ui.btn_obj, LV_STATE_CHECKED);
     else lv_obj_clear_state(ui.btn_obj, LV_STATE_CHECKED);
   }
@@ -76,7 +81,7 @@ inline void switch_confirmation_open_modal(const ParsedCfg &p, lv_obj_t *btn_obj
 
   ControlModalShell shell = control_modal_open_shell(
     ControlModalKind::SWITCH_CONFIRMATION, btn_obj, 100, icon_font,
-    "\U000F0156", true, switch_confirmation_hide_modal);
+    switch_confirmation_hide_modal);
   SwitchConfirmationModalUi &ui = switch_confirmation_modal_ui();
   ui.cfg = p;
   ui.btn_obj = btn_obj;
@@ -111,9 +116,15 @@ inline void switch_confirmation_open_modal(const ParsedCfg &p, lv_obj_t *btn_obj
   ui.no_btn = control_modal_create_text_button(
     ui.panel, switch_confirmation_no_text(p), button_max_w, button_min_w, button_h,
     button_h / 2, DARK_BORDER, button_font);
+  uint32_t confirm_color = current_button_primary_color();
   ui.confirm_btn = control_modal_create_text_button(
     ui.panel, switch_confirmation_yes_text(p), button_max_w, button_min_w, button_h,
-    button_h / 2, DEFAULT_SLIDER_COLOR, button_font);
+    button_h / 2, confirm_color, button_font);
+  lv_obj_t *confirm_label = lv_obj_get_child(ui.confirm_btn, 0);
+  if (confirm_label) {
+    lv_obj_set_style_text_color(
+      confirm_label, lv_color_hex(readable_text_color_for_bg(confirm_color)), LV_PART_MAIN);
+  }
 
   lv_obj_update_layout(ui.message_lbl);
   lv_obj_update_layout(ui.no_btn);

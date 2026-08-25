@@ -7,9 +7,9 @@ starts with the fastest place to look and the narrowest useful check.
 
 First files:
 
-- `src/webserver/modules/config_codec.js`
+- `src/webserver/application/config_codec.ts`
 - `components/espcontrol/button_grid_config.h`
-- `common/config/card_contract.json`
+- `product/v2/card_contract.json`
 
 Likely cause: the editor writes an option, but web normalization or firmware
 parsing strips it as unknown.
@@ -27,7 +27,7 @@ Stop if the web codec and firmware parser do not preserve the same fields.
 
 First files:
 
-- `src/webserver/types/<type>.js`
+- `src/webserver/cards/<type>.ts`
 - `components/espcontrol/button_grid_<type>.h`
 - `components/espcontrol/button_grid_grid.h`
 
@@ -69,9 +69,9 @@ Stop if there is no authored source change that explains the generated diff.
 
 First files:
 
-- `compatibility/fixtures/product_compatibility.json`
-- `src/webserver/modules/backup_contract.js`
-- `src/webserver/modules/config_codec.js`
+- `product/v2/product_compatibility.json`
+- `src/webserver/application/backup_contract.ts`
+- `src/webserver/application/config_codec.ts`
 
 Likely cause: the saved shape changed without a fixture or import fallback.
 
@@ -109,8 +109,8 @@ Before publishing, compile the affected S3 firmware.
 
 First files:
 
-- `common/config/card_contract.json`
-- `src/webserver/types/<type>.js`
+- `product/v2/card_contract.json`
+- `src/webserver/cards/<type>.ts`
 - `components/espcontrol/button_grid.h`
 - `components/espcontrol/button_grid_grid.h`
 

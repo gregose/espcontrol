@@ -1,61 +1,40 @@
 ---
 title: Sensor Cards
 description:
-  How to display live numeric readings, text states, or icon states from Home Assistant on your EspControl panel.
+  How to display live readings, durations, text, or icon states from Home Assistant on EspControl.
 ---
 
 # Sensor
 
-A sensor card displays live Home Assistant data. It has three modes:
-
-- **Icon** — shows an icon and can change to an on icon when the sensor is active.
-- **Numeric** — shows a large number with an optional unit and label. This is the default mode.
-- **Text** — shows a chosen icon and displays the live text state where a normal card label would appear.
-
-Sensor cards are read-only — tapping them does nothing.
+A Sensor card is read-only. It displays a Home Assistant `sensor`, `binary_sensor`, or `text_sensor`; it can also use a [Local Sensor](/card-types/local-sensors) from the panel itself.
 
 ![Sensor card showing 0 kph wind speed](/images/card-sensor.png)
 
-## Setting Up a Sensor Card
+## Set Up a Sensor Card
 
 1. Select a card and change its type to **Sensor**.
-2. Choose **Icon**, **Numeric**, or **Text** from the mode tabs. Numeric is selected by default.
-3. Enter a **Sensor Entity** — the Home Assistant entity ID of the sensor you want to display.
+2. Leave **Source** as **Home Assistant**, choose the display type, and enter the sensor entity.
+3. Set a label, unit, and icon as needed.
 
-For **Icon** mode:
+| Type | What it shows |
+|---|---|
+| **Numeric** | A live number, optional unit, and label. **Large Sensor Numbers** is available on Large cards. |
+| **Time** | A compact duration such as `36m` or `1h 30m`. Leave **Incoming Value Unit** on Auto unless the entity does not report a usable unit. |
+| **Text** | The live state beside a chosen icon. Advanced settings can replace up to two raw states with friendlier text. |
+| **Icon** | A normal and optional active icon for a status-style sensor. |
 
-1. Choose an **Icon** for the normal state.
-2. Choose an **On Icon** if you want a different icon when the sensor is active.
-3. Set a **Label** if you want custom text. If left blank, the entity name from Home Assistant is used.
+Choose **Lit When Active** when an active status should use the on colour. It is not available for Time cards. Numeric cards treat values above zero as active; Text and Icon cards follow recognised Home Assistant active states.
 
-For **Numeric** mode:
+## Useful Details
 
-1. Set a **Unit** — the unit label shown next to the value, for example `°C`, `%`, `W`, or `kWh`.
-2. Set a **Label** if you want custom text under the value. If left blank, the entity name from Home Assistant is used.
-3. Set **Unit Precision** if you want one or two decimal places.
-4. On a **Large** card, turn on **Large Sensor Numbers** if you want the top sensor readout scaled much larger.
+- A Time card needs a value in days, hours, minutes, seconds, milliseconds, or microseconds. You can select the unit manually when Auto cannot identify it.
+- Unknown, unavailable, or invalid values are left blank rather than guessed.
+- Changes made in Home Assistant update the panel automatically.
+- To show a device-local sensor, change **Source** to **Local Sensor** and follow the [Local Sensor](/card-types/local-sensors) setup.
 
-For **Text** mode:
-
-1. Choose an **Icon**. This icon is always shown and does not change based on the sensor value.
-2. The live state from Home Assistant is shown where a Switch card label would normally appear.
-3. Open **Advanced** if you want to replace raw Home Assistant states with friendlier labels. For example, you can show `Please empty` when the sensor reports `high`, and `Full` when another sensor state reports `low`.
-
-## How It Works on the Panel
-
-- Icon mode treats active Home Assistant states such as `on`, `true`, `home`, `playing`, `open`, or `unlocked` as active and uses the on icon when configured.
-- Numeric mode displays the current value in large text, with the unit beside it and the label underneath.
-- Numeric mode uses the **tertiary** colour from [Appearance](/features/appearance), so it remains visually distinct from Switch and Trigger cards.
-- Text mode uses the same tertiary colour as Numeric mode, while keeping the normal Switch-style icon and label layout.
-- Text mode capitalises each word in the Home Assistant text and preserves line breaks. Advanced status translation is applied before the text is shown. Very long values are limited to roughly 256 characters so the panel stays responsive.
-
-## Example Sensors
-
-| Entity | Mode | Unit | What it shows |
-|---|---|---|---|
-| `sensor.living_room_temperature` | Numeric | `°C` | Indoor temperature |
-| `sensor.solar_power` | Numeric | `W` | Current solar generation |
-| `sensor.humidity` | Numeric | `%` | Relative humidity |
-| `binary_sensor.laundry_running` | Icon |  | Laundry running or idle |
-| `text_sensor.washing_machine_status` | Text |  | `Running`, `Rinsing`, or `Finished` |
-| `sensor.fan_level` | Text |  | `low`, `medium`, or `high` |
+| Example entity | Suggested type |
+|---|---|
+| `sensor.living_room_temperature` | Numeric |
+| `sensor.ups_battery_runtime` | Time |
+| `binary_sensor.laundry_running` | Icon |
+| `text_sensor.washing_machine_status` | Text |

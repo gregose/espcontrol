@@ -5,8 +5,10 @@
 # =============================================================================
 
 substitutions:
+  cover_art_placeholder_file: "../common/assets/cover_art_placeholder.svg"
   firmware_version: "0.0.0"
   espcontrol_component_url: "file:///config"
+  mdi_font_file: "/config/common/assets/fonts/materialdesignicons-webfont-7.4.47.ttf"
   espcontrol_component_ref: "HEAD"
 
 packages:
@@ -23,5 +25,5 @@ dashboard_import:
 web_server:
   port: 80
   version: 3
-  js_url: ""
-  js_include: "../docs/public/webserver/guition-esp32-p4-jc4880p443/www.js"
+  js_url: https://jtenniswood.github.io/espcontrol/webserver/www.js?device=${device_slug}&v=${firmware_version}&ui=20260714-shared
+  js_include: "../docs/public/webserver/embedded/www.js"

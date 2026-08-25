@@ -17,6 +17,7 @@
 #include <algorithm>
 #include "esphome/components/lvgl/lvgl_esphome.h"
 #include "clock_bar.h"
+#include "display_mode_controller.h"
 #include "sun_calc.h"
 #include "temperature_unit.h"
 
@@ -46,8 +47,8 @@ inline void backlight_close_modals_for_display_takeover() {
 struct SunCalcResult {
   int rise_h, rise_m, set_h, set_m;
   bool valid;
-  char sunrise_str[16];
-  char sunset_str[16];
+  char sunrise_str[32];
+  char sunset_str[32];
 };
 
 inline SunCalcResult recalc_sunrise_sunset(
@@ -55,8 +56,9 @@ inline SunCalcResult recalc_sunrise_sunset(
     const std::string &tz_option, bool use_12h = true) {
   SunCalcResult r = {};
 
-  std::string tz_id = timezone_id_from_option(tz_option);
-  float tz_offset = utc_offset_hours_for_date(year, month, day, tz_option);
+  std::string effective_tz_option = effective_timezone_option(tz_option);
+  std::string tz_id = timezone_id_from_option(effective_tz_option);
+  float tz_offset = utc_offset_hours_for_date(year, month, day, effective_tz_option);
 
   float lat, lon;
   if (!lookup_tz_coords(tz_id, lat, lon)) {
@@ -137,12 +139,32 @@ inline bool parse_time_of_day(const std::string &value, int &hour, int &minute) 
   return true;
 }
 
+inline bool brightness_mode_manual(const std::string &mode) {
+  return mode == "Manual" || mode == "manual";
+}
+
+inline bool brightness_mode_uses_fixed_times(const std::string &mode) {
+  return mode == "Fixed times" || mode == "fixed_times" || mode == "fixed";
+}
+
+inline bool brightness_mode_uses_sun(const std::string &mode) {
+  return !brightness_mode_manual(mode) && !brightness_mode_uses_fixed_times(mode);
+}
+
+inline std::string normalize_brightness_mode(const std::string &mode) {
+  if (brightness_mode_manual(mode)) return "Manual";
+  if (brightness_mode_uses_fixed_times(mode)) return "Fixed times";
+  return "Sunrise and sunset";
+}
+
 inline bool brightness_schedule_times(
-    bool automatic_times_enabled,
+    const std::string &brightness_mode,
     bool sunrise_valid, int sunrise_h, int sunrise_m, int sunset_h, int sunset_m,
     const std::string &manual_dawn, const std::string &manual_dusk,
     int &rise_h, int &rise_m, int &set_h, int &set_m) {
-  if (automatic_times_enabled) {
+  if (brightness_mode_manual(brightness_mode)) return false;
+
+  if (brightness_mode_uses_sun(brightness_mode)) {
     rise_h = sunrise_h;
     rise_m = sunrise_m;
     set_h = sunset_h;
@@ -161,6 +183,28 @@ inline bool brightness_schedule_times(
   set_h = dusk_h;
   set_m = dusk_m;
   return dawn_valid && dusk_valid;
+}
+
+inline bool brightness_schedule_times(
+    const char *brightness_mode,
+    bool sunrise_valid, int sunrise_h, int sunrise_m, int sunset_h, int sunset_m,
+    const std::string &manual_dawn, const std::string &manual_dusk,
+    int &rise_h, int &rise_m, int &set_h, int &set_m) {
+  return brightness_schedule_times(
+      std::string(brightness_mode ? brightness_mode : ""),
+      sunrise_valid, sunrise_h, sunrise_m, sunset_h, sunset_m,
+      manual_dawn, manual_dusk, rise_h, rise_m, set_h, set_m);
+}
+
+inline bool brightness_schedule_times(
+    bool automatic_times_enabled,
+    bool sunrise_valid, int sunrise_h, int sunrise_m, int sunset_h, int sunset_m,
+    const std::string &manual_dawn, const std::string &manual_dusk,
+    int &rise_h, int &rise_m, int &set_h, int &set_m) {
+  return brightness_schedule_times(
+      std::string(automatic_times_enabled ? "Sunrise and sunset" : "Fixed times"),
+      sunrise_valid, sunrise_h, sunrise_m, sunset_h, sunset_m,
+      manual_dawn, manual_dusk, rise_h, rise_m, set_h, set_m);
 }
 
 // ── Screen schedule helpers ───────────────────────────────────────────
@@ -189,6 +233,12 @@ inline bool screen_schedule_sensor_trigger(const std::string &trigger) {
   return trigger == "Sensor" || trigger == "sensor";
 }
 
+inline bool screen_schedule_sensor_activation_on(
+    const std::string &activation) {
+  return activation == "Sensor On" || activation == "sensor_on" ||
+         activation == "On" || activation == "on";
+}
+
 inline bool screen_schedule_disabled_trigger(const std::string &trigger) {
   return trigger == "Disabled" || trigger == "disabled" || trigger == "Off" ||
          trigger == "off";
@@ -211,9 +261,15 @@ inline bool screen_schedule_night_active(const std::string &trigger,
                                          bool time_valid,
                                          int now_h,
                                          int on_hour,
-                                         int off_hour) {
+                                         int off_hour,
+                                         const std::string &sensor_activation =
+                                             "Sensor Off") {
   if (!enabled || screen_schedule_disabled_trigger(trigger)) return false;
-  if (screen_schedule_sensor_trigger(trigger)) return !presence_detected;
+  if (screen_schedule_sensor_trigger(trigger)) {
+    return screen_schedule_sensor_activation_on(sensor_activation)
+               ? presence_detected
+               : !presence_detected;
+  }
   if (!time_valid) return false;
   return !screen_schedule_in_window(now_h, on_hour, off_hour);
 }
@@ -224,11 +280,32 @@ inline bool screen_schedule_normal_active(const std::string &trigger,
                                           bool time_valid,
                                           int now_h,
                                           int on_hour,
-                                          int off_hour) {
+                                          int off_hour,
+                                          const std::string &sensor_activation =
+                                              "Sensor Off") {
   if (!enabled || screen_schedule_disabled_trigger(trigger)) return false;
-  if (screen_schedule_sensor_trigger(trigger)) return presence_detected;
+  if (screen_schedule_sensor_trigger(trigger)) {
+    return screen_schedule_sensor_activation_on(sensor_activation)
+               ? !presence_detected
+               : presence_detected;
+  }
   if (!time_valid) return false;
   return screen_schedule_in_window(now_h, on_hour, off_hour);
+}
+
+inline bool screen_schedule_blocks_cover_art(const std::string &trigger,
+                                             bool enabled,
+                                             bool presence_detected,
+                                             bool time_valid,
+                                             int now_h,
+                                             int on_hour,
+                                             int off_hour,
+                                             const std::string &sensor_activation =
+                                                 "Sensor Off") {
+  return screen_schedule_waiting_for_time(trigger, enabled, time_valid) ||
+         screen_schedule_night_active(trigger, enabled, presence_detected,
+                                      time_valid, now_h, on_hour, off_hour,
+                                      sensor_activation);
 }
 
 // ── Screensaver action helpers ────────────────────────────────────────

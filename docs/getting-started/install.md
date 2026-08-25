@@ -18,6 +18,15 @@ Connect the display to your computer with the USB-C cable, choose your panel, th
 
 <EspInstallSelector />
 
+## Having Unreliable Wi‑Fi on a P4 Panel?
+
+P4 panels use a separate ESP32-C6 Wi‑Fi processor. If a P4 panel repeatedly
+disconnects, disappears from Home Assistant, cannot finish initial setup, or reports
+C6 update timeouts, use the [C6 Wi‑Fi recovery installer](/getting-started/c6-recovery).
+It repairs the C6 over USB without requiring a working network connection.
+
+This recovery does not apply to the ESP32-S3 4848S040 panel.
+
 ::: tip Which cable?
 If the install button doesn't detect your device, try a different USB-C cable. Charge-only cables (often thinner and cheaper) won't work — you need one that supports data transfer.
 :::
@@ -59,7 +68,7 @@ With the display connected to WiFi and paired with Home Assistant, you're ready 
 1. **Find the device's address.** It's shown on the display screen. You can also find it in your router's device list or in **Home Assistant > Settings > Devices & Services > ESPHome** (click the device, then look for the IP address).
 2. **Open that address in a browser** — for example, `http://espcontrol.local`. This opens the device's built-in web page.
 3. **Add your cards.** On the **Screen** tab, tap an empty slot and choose the card type you want. For example, a **Switch** card controls a Home Assistant entity, while a **Sensor** card displays a reading.
-4. **Adjust your settings.** On the **Settings** tab, set your card colours, temperatures, screensaver timeout, brightness, and more.
+4. **Adjust your settings.** On the **Settings** tab, set your active card colour, temperatures, screensaver timeout, brightness, and more.
 5. **Tap "Apply Configuration"** when you're done. The display restarts with your new settings.
 
 That's it — your panel is ready to use. See the [Setup](/features/setup) guide for a full walkthrough of every setting.

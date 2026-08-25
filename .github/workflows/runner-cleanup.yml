@@ -1,6 +1,11 @@
 name: Runner Disk Cleanup
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/runner-cleanup.yml'
+      - 'scripts/reclaim_actions_disk.sh'
   schedule:
     - cron: '15 3 * * *'
   workflow_dispatch:
@@ -22,7 +27,7 @@ jobs:
           rm -rf "${GITHUB_WORKSPACE:?}/"* "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"..?* 2>/dev/null ||
             sudo rm -rf "${GITHUB_WORKSPACE:?}/"* "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"..?*
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: |
             scripts/reclaim_actions_disk.sh
@@ -39,4 +44,7 @@ jobs:
           fi
 
       - name: Reclaim runner disk
+        env:
+          ESPCONTROL_DOCKER_PRUNE_ALL_IMAGES: true
+          ESPCONTROL_DOCKER_PRUNE_VOLUMES: true
         run: bash scripts/reclaim_actions_disk.sh

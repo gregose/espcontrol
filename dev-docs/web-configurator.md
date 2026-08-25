@@ -1,23 +1,33 @@
 # Web Configurator
 
 The web configurator is the browser setup page loaded from a device's web
-server. It is written as plain JavaScript modules and bundled into a single
+server. It is written in TypeScript and bundled into a single
 `www.js` file per supported device.
 
 ## Source Layout
 
 | Path | Purpose |
 |---|---|
-| `src/webserver/entry.js` | Bundle entry point. |
-| `src/webserver/modules/` | Shared state, rendering, API, backup, settings, preview, and codec logic. |
-| `src/webserver/types/` | Card-specific settings panels and previews. |
+| `src/webserver/entry.ts` | Composition root. It installs application modules and card registrations in one deliberate order. |
+| `src/webserver/application/` | Shared state, rendering, API, backup, settings, preview, and codec modules. Each file exports an explicit installer. |
+| `src/webserver/cards/` | Card-specific settings panels and previews. Each file exports an explicit registration function. |
 | `src/webserver/model/*.ts` | Typed model sources. |
-| `src/webserver/modules/model_generated.js` | Generated web model output. |
-| `scripts/web_modules.json` | Explicit order for shared modules. |
-| `docs/public/webserver/<slug>/www.js` | Generated per-device bundles served in production. |
+| `src/webserver/state/*.ts` | Typed device configuration, application state factory, event aliases, and event parsing. |
+| `src/webserver/api/*.ts` | Injectable HTTP transport, ordered POST queue, typed request results, and failure classification. |
+| `src/webserver/generated/*.ts` | Typed card metadata, entity catalogue, and icon data generated from their shared sources. |
+| `src/webserver/testing/*.ts` | Browser test hooks, included only in test bundles. |
+| `docs/public/webserver/<slug>/www.js` | Generated per-device bundles used for bundled firmware and hosted compatibility. |
 
-Files in `src/webserver/types/` are discovered by the build. Shared files in
-`src/webserver/modules/` must be listed in `scripts/web_modules.json`.
+`entry.ts` imports every application installer and card registration directly.
+The visible call order is the runtime order; the build does not discover files,
+sort filenames, concatenate source, or depend on import side effects.
+All TypeScript and generated data are imported directly by the bundle build.
+The application exposes one mutable state instance created by
+`createInitialState(deviceConfig)`; tests create isolated instances from the
+same factory.
+Controllers keep responsibility for banners, reconnect scheduling, and UI
+locking; the typed device API owns transport, fallback attempts, throttling,
+keepalive requests, and JSON decoding.
 
 ## Build
 
@@ -26,16 +36,27 @@ python3 scripts/build.py www
 ```
 
 That command writes `docs/public/webserver/<slug>/www.js` for each supported
-device. Commit those generated bundles when web behavior changes.
+device. The shared `docs/public/webserver/www.js` is a small hosted bridge: it
+uses `web-assets.json` to select an immutable content-addressed editor for the
+development build and the five supported stable release versions. The matching
+offline editor is written to `docs/public/webserver/embedded/www.js`. Firmware
+loads that local editor first as a fallback, then asks the hosted bridge for its
+declared compatible bundle; if the manifest or bundle cannot be loaded, the
+local editor starts automatically. Commit these generated files when web
+behavior changes.
 
-The configurator page itself is served by the device, but in production the
-JavaScript bundle is fetched from GitHub Pages:
+The configurator page itself is served by the device. New build entry points in
+`builds/*.yaml` bundle the matching JavaScript with `web_server.js_include`, so
+a flashed branch uses that branch's setup UI. The generated files are still
+published for older firmware that loads the hosted GitHub Pages copy:
 
 ```text
 https://jtenniswood.github.io/espcontrol/webserver/<slug>/www.js
 ```
 
-The default bundle URL is set as `js_url` in `common/device/core_infra.yaml`.
+The fallback hosted bundle URL is set as `js_url` in
+`common/device/core_infra.yaml`. Keep that path stable for older installed
+firmware and imported configs.
 
 ## Device API Shape
 
@@ -49,7 +70,7 @@ Button 2 Config
 ```
 
 The setup page serializes card settings to a compact string. Firmware parses the
-same string on-device. Keep `src/webserver/modules/config_codec.js` and
+same string on-device. Keep `src/webserver/application/config_codec.ts` and
 `components/espcontrol/button_grid_config.h` in sync.
 
 To inspect what the device actually stored, read the matching ESPHome web server
@@ -68,23 +89,27 @@ REST response shows the exact compact string firmware will parse.
 For a card type named `example`, create or update:
 
 ```text
-src/webserver/types/example.js
+src/webserver/cards/example.ts
 ```
 
 The usual registration shape is:
 
 ```js
-registerButtonType("example", {
-  label: function () { return cardContractCardLabel("example"); },
-  defaultConfig: function () { return cardContractDefaultConfig("example"); },
-  renderPreview: function (b, helpers) { /* return preview pieces */ },
-  renderSettings: function (panel, b, helpers) { /* add form fields */ },
-  onSelect: function (b) { /* initialize fields */ },
-});
+export function registerExampleCardTypes(registry: CardRegistry): void {
+  registry.register("example", {
+    label: function () { return cardContractCardLabel("example"); },
+    defaultConfig: function () { return cardContractDefaultConfig("example"); },
+    renderPreview: function (b, helpers) { /* return preview pieces */ },
+    renderSettings: function (panel, b, helpers) { /* add form fields */ },
+    onSelect: function (b) { /* initialize fields */ },
+  });
+}
 ```
 
 Prefer contract helpers for labels, defaults, picker behavior, and visibility so
-the setup page stays aligned with firmware metadata.
+the setup page stays aligned with firmware metadata. Import and call the new
+registration function with `context.cards` in the deliberate card order in
+`entry.ts`.
 
 ## Preview and Persistence Rules
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "media_volume_capability.h"
+
 // Internal implementation detail for button_grid.h. Include button_grid.h from device YAML.
 
 // ── Home Assistant actions ────────────────────────────────────────────
@@ -31,6 +33,84 @@ inline const char *action_card_value_key(const std::string &action) {
   return nullptr;
 }
 
+inline std::string action_card_trim_text(const std::string &value) {
+  size_t start = 0;
+  while (start < value.size() &&
+         std::isspace(static_cast<unsigned char>(value[start]))) {
+    start++;
+  }
+  size_t end = value.size();
+  while (end > start &&
+         std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+    end--;
+  }
+  return value.substr(start, end - start);
+}
+
+inline bool action_card_script_field_name_valid(const std::string &name) {
+  if (name.empty() || name == "entity_id") return false;
+  for (char ch : name) {
+    unsigned char c = static_cast<unsigned char>(ch);
+    if (!(std::isalnum(c) || ch == '_')) return false;
+  }
+  return true;
+}
+
+inline bool action_card_parse_script_field(const std::string &line,
+                                           std::string &key,
+                                           std::string &value) {
+  size_t sep = line.find(':');
+  size_t equals = line.find('=');
+  if (sep == std::string::npos || (equals != std::string::npos && equals < sep)) {
+    sep = equals;
+  }
+  if (sep == std::string::npos) return false;
+  key = action_card_trim_text(line.substr(0, sep));
+  value = action_card_trim_text(line.substr(sep + 1));
+  return action_card_script_field_name_valid(key) && !value.empty();
+}
+
+struct ActionCardScriptField {
+  std::string key;
+  std::string value;
+};
+
+inline std::vector<ActionCardScriptField> action_card_script_fields(const std::string &options) {
+  std::vector<ActionCardScriptField> out;
+  std::string fields = cfg_option_value(options, "script_fields");
+  if (fields.empty()) return out;
+  size_t start = 0;
+  while (start <= fields.size()) {
+    size_t end = fields.find('\n', start);
+    if (end == std::string::npos) end = fields.size();
+    std::string key;
+    std::string value;
+    if (action_card_parse_script_field(fields.substr(start, end - start), key, value)) {
+      out.push_back({key, value});
+    }
+    start = end + 1;
+  }
+  return out;
+}
+
+inline std::string action_card_script_fields_template(const std::vector<ActionCardScriptField> &fields) {
+  if (fields.empty()) return "";
+  std::string out = "{{ dict(";
+  for (size_t i = 0; i < fields.size(); i++) {
+    if (i > 0) out += ", ";
+    out += fields[i].key + "=" + fields[i].key;
+  }
+  out += ") }}";
+  return out;
+}
+
+inline void action_card_add_script_field_variables(esphome::api::HomeassistantActionRequest &req,
+                                                   const std::vector<ActionCardScriptField> &fields) {
+  for (const auto &field : fields) {
+    ha_action_add_variable(req, field.key.c_str(), field.value.c_str());
+  }
+}
+
 inline bool action_card_action_allowed(const std::string &action) {
   return action == "scene.turn_on" ||
          action == "script.turn_on" ||
@@ -47,16 +127,35 @@ inline bool action_card_action_allowed(const std::string &action) {
 }
 
 inline void send_action_card_action(const ParsedCfg &p) {
+  if (action_card_local_action(p)) {
+    if (!p.entity.empty()) send_local_action(p.entity);
+    return;
+  }
   if (p.entity.empty() || p.sensor.empty() || !action_card_action_allowed(p.sensor)) return;
   if (action_card_option_select(p)) return;
   const char *value_key = action_card_value_key(p.sensor);
   if (value_key && p.unit.empty()) return;
+  std::vector<ActionCardScriptField> script_fields = p.sensor == "script.turn_on"
+    ? action_card_script_fields(p.options)
+    : std::vector<ActionCardScriptField>();
 
   esphome::api::HomeassistantActionRequest req;
-  if (!ha_action_begin(req, p.sensor.c_str(), false, value_key ? 2 : 1)) return;
+  if (!ha_action_begin(req, p.sensor.c_str(), false, 1 + (value_key ? 1 : 0))) return;
+  std::string script_fields_template;
+  if (!script_fields.empty()) {
+    script_fields_template = action_card_script_fields_template(script_fields);
+    if (!script_fields_template.empty()) {
+      req.data_template.init(1);
+      req.variables.init(script_fields.size());
+    }
+  }
   ha_action_add_entity(req, p.entity);
   if (value_key) {
     ha_action_add_data(req, value_key, p.unit.c_str());
+  }
+  if (!script_fields_template.empty()) {
+    ha_action_add_data_template(req, "variables", script_fields_template.c_str());
+    action_card_add_script_field_variables(req, script_fields);
   }
   ha_action_send(req);
 }
@@ -203,12 +302,118 @@ inline bool cover_tilt_mode(const std::string &sensor) {
   return card_runtime_cover_tilt_mode(sensor);
 }
 
+inline bool cover_modal_mode(const std::string &sensor) {
+  return card_runtime_cover_modal_mode(sensor);
+}
+
 inline bool cover_command_mode(const std::string &sensor) {
   return card_runtime_cover_command_mode(sensor);
 }
 
 inline const char *cover_command_service(const std::string &sensor) {
   return card_runtime_cover_command_service(sensor);
+}
+
+constexpr int COVER_SUPPORT_OPEN = 1;
+constexpr int COVER_SUPPORT_CLOSE = 2;
+constexpr int COVER_SUPPORT_SET_POSITION = 4;
+constexpr int COVER_SUPPORT_STOP = 8;
+constexpr int COVER_SUPPORT_OPEN_TILT = 16;
+constexpr int COVER_SUPPORT_CLOSE_TILT = 32;
+constexpr int COVER_SUPPORT_STOP_TILT = 64;
+constexpr int COVER_SUPPORT_SET_TILT_POSITION = 128;
+
+inline bool cover_parse_supported_features(esphome::StringRef val, int &features) {
+  std::string value = normalized_state_text(val);
+  if (value.empty() || value == "none" || value == "null" ||
+      value == "unknown" || value == "unavailable") {
+    return false;
+  }
+  char *end = nullptr;
+  long parsed = std::strtol(value.c_str(), &end, 10);
+  if (end == value.c_str()) return false;
+  features = static_cast<int>(parsed);
+  return true;
+}
+
+inline const char *cover_tilt_command_service(const std::string &sensor) {
+  if (sensor == "open") return "cover.open_cover_tilt";
+  if (sensor == "close") return "cover.close_cover_tilt";
+  if (sensor == "stop") return "cover.stop_cover_tilt";
+  if (sensor == "set_position") return "cover.set_cover_tilt_position";
+  return nullptr;
+}
+
+inline int cover_command_normal_feature(const std::string &sensor) {
+  if (sensor == "open") return COVER_SUPPORT_OPEN;
+  if (sensor == "close") return COVER_SUPPORT_CLOSE;
+  if (sensor == "stop") return COVER_SUPPORT_STOP;
+  if (sensor == "set_position") return COVER_SUPPORT_SET_POSITION;
+  return 0;
+}
+
+inline int cover_command_tilt_feature(const std::string &sensor) {
+  if (sensor == "open") return COVER_SUPPORT_OPEN_TILT;
+  if (sensor == "close") return COVER_SUPPORT_CLOSE_TILT;
+  if (sensor == "stop") return COVER_SUPPORT_STOP_TILT;
+  if (sensor == "set_position") return COVER_SUPPORT_SET_TILT_POSITION;
+  return 0;
+}
+
+struct CoverCommandCtx {
+  ParsedCfg config;
+  bool supported_features_known = false;
+  int supported_features = 0;
+};
+
+inline bool cover_command_use_tilt(const std::string &sensor,
+                                   bool supported_features_known,
+                                   int supported_features) {
+  if (!supported_features_known) return false;
+  int normal_feature = cover_command_normal_feature(sensor);
+  int tilt_feature = cover_command_tilt_feature(sensor);
+  return normal_feature != 0 && tilt_feature != 0 &&
+         (supported_features & normal_feature) == 0 &&
+         (supported_features & tilt_feature) != 0;
+}
+
+inline bool cover_command_supported(const std::string &sensor,
+                                    bool supported_features_known,
+                                    int supported_features) {
+  if (!supported_features_known) return true;
+  int normal_feature = cover_command_normal_feature(sensor);
+  int tilt_feature = cover_command_tilt_feature(sensor);
+  return (normal_feature != 0 && (supported_features & normal_feature) != 0) ||
+         (tilt_feature != 0 && (supported_features & tilt_feature) != 0);
+}
+
+inline void cover_command_apply_supported_features(CoverCommandCtx *ctx, int features) {
+  if (!ctx) return;
+  ctx->supported_features_known = true;
+  ctx->supported_features = features;
+}
+
+inline CoverCommandCtx *create_cover_command_context(const ParsedCfg &p) {
+  CoverCommandCtx *ctx = new CoverCommandCtx();
+  ctx->config = p;
+  return ctx;
+}
+
+inline void subscribe_cover_command_features(CoverCommandCtx *ctx) {
+  if (!ctx || ctx->config.entity.empty()) return;
+  ha_subscribe_attribute(
+    ctx->config.entity, std::string("supported_features"),
+    std::function<void(esphome::StringRef)>(
+      [ctx](esphome::StringRef val) {
+        int features = 0;
+        if (cover_parse_supported_features(val, features)) {
+          cover_command_apply_supported_features(ctx, features);
+        } else {
+          ctx->supported_features_known = false;
+          ctx->supported_features = 0;
+        }
+      })
+  );
 }
 
 inline int cover_position_value(const std::string &value) {
@@ -247,12 +452,14 @@ inline void cover_stop_cancel_pending_request() {
   ha_cancel_action_response_callback(call_id, "api disconnected");
 }
 
-inline void send_cover_command_action(const ParsedCfg &p) {
-  const char *service = cover_command_service(p.sensor);
+inline void send_cover_command_action(const ParsedCfg &p, bool tilt_command = false) {
+  const char *service = tilt_command
+    ? cover_tilt_command_service(p.sensor)
+    : cover_command_service(p.sensor);
   if (p.entity.empty() || service == nullptr) return;
 
   bool has_position = p.sensor == "set_position";
-  bool wants_stop_response = p.sensor == "stop";
+  bool wants_stop_response = p.sensor == "stop" && !tilt_command;
   esphome::api::HomeassistantActionRequest req;
   uint32_t call_id = wants_stop_response ? next_cover_stop_call_id() : 0;
   if (!ha_action_begin(req, service, false, has_position ? 2 : 1, call_id)) return;
@@ -263,7 +470,7 @@ inline void send_cover_command_action(const ParsedCfg &p) {
   if (has_position) {
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", cover_position_value(p.unit));
-    ha_action_add_data(req, "position", buf);
+    ha_action_add_data(req, tilt_command ? "tilt_position" : "position", buf);
   }
   bool cover_stop_tracked = false;
   if (wants_stop_response) {
@@ -290,42 +497,63 @@ inline void send_cover_command_action(const ParsedCfg &p) {
   }
 }
 
+inline void send_cover_command_action(const std::string &entity_id,
+                                      const std::string &mode,
+                                      bool tilt_command = false) {
+  ParsedCfg p;
+  p.entity = entity_id;
+  p.sensor = mode;
+  send_cover_command_action(p, tilt_command);
+}
+
+inline void send_cover_command_action(const CoverCommandCtx &ctx) {
+  const ParsedCfg &p = ctx.config;
+  if (!cover_command_supported(p.sensor, ctx.supported_features_known, ctx.supported_features)) {
+    ESP_LOGW("cover", "Cover command %s is not supported for %s",
+             p.sensor.c_str(), p.entity.c_str());
+    return;
+  }
+  send_cover_command_action(
+    p,
+    cover_command_use_tilt(p.sensor, ctx.supported_features_known, ctx.supported_features));
+}
+
 // Send HA action for a slider change: toggle (value<0), brightness, or cover position/tilt
-inline void send_slider_action(const std::string &entity_id, int value, bool cover_tilt = false) {
+inline bool send_slider_action(const std::string &entity_id, int value, bool cover_tilt = false) {
   esphome::api::HomeassistantActionRequest req;
   if (value < 0) {
-    if (!ha_action_begin(req, "homeassistant.toggle", false, 1)) return;
+    if (!ha_action_begin(req, "homeassistant.toggle", false, 1)) return false;
     ha_action_add_entity(req, entity_id);
   } else if (is_cover_entity(entity_id)) {
     if (!ha_action_begin(req,
       cover_tilt ? "cover.set_cover_tilt_position" : "cover.set_cover_position",
-      false, 2)) return;
+      false, 2)) return false;
     ha_action_add_entity(req, entity_id);
-    char buf[8];
+    char buf[12];
     snprintf(buf, sizeof(buf), "%d", value);
     ha_action_add_data(req, cover_tilt ? "tilt_position" : "position", buf);
   } else if (is_fan_entity(entity_id)) {
     if (value == 0) {
-      if (!ha_action_begin(req, "fan.turn_off", false, 1)) return;
+      if (!ha_action_begin(req, "fan.turn_off", false, 1)) return false;
       ha_action_add_entity(req, entity_id);
     } else {
-      if (!ha_action_begin(req, "fan.turn_on", false, 2)) return;
+      if (!ha_action_begin(req, "fan.turn_on", false, 2)) return false;
       ha_action_add_entity(req, entity_id);
-      char buf[8];
+      char buf[12];
       snprintf(buf, sizeof(buf), "%d", value);
       ha_action_add_data(req, "percentage", buf);
     }
   } else if (value == 0) {
-    if (!ha_action_begin(req, "light.turn_off", false, 1)) return;
+    if (!ha_action_begin(req, "light.turn_off", false, 1)) return false;
     ha_action_add_entity(req, entity_id);
   } else {
-    if (!ha_action_begin(req, "light.turn_on", false, 2)) return;
+    if (!ha_action_begin(req, "light.turn_on", false, 2)) return false;
     ha_action_add_entity(req, entity_id);
-    char buf[8];
+    char buf[12];
     snprintf(buf, sizeof(buf), "%d", value);
     ha_action_add_data(req, "brightness_pct", buf);
   }
-  ha_action_send(req);
+  return ha_action_send(req);
 }
 
 // Parse "min-max" kelvin range from the unit config field (e.g. "2000-6500").
@@ -376,6 +604,35 @@ inline void send_light_temp_action(const std::string &entity_id, int pct, int mi
   ha_action_send(req);
 }
 
+inline void send_light_color_name_action(const std::string &entity_id, const char *color_name) {
+  esphome::api::HomeassistantActionRequest req;
+  if (!ha_action_begin(req, "light.turn_on", false, 2)) return;
+  if (entity_id.empty() || !color_name || color_name[0] == '\0') return;
+  ha_action_add_entity(req, entity_id);
+  ha_action_add_data(req, "color_name", color_name);
+  ha_action_send(req);
+}
+
+inline void send_light_rgb_action(const std::string &entity_id, uint32_t color) {
+  esphome::api::HomeassistantActionRequest req;
+  if (!ha_action_begin(req, "light.turn_on", false, 1)) return;
+  if (entity_id.empty()) return;
+  req.data_template.init(1);
+  req.variables.init(3);
+  ha_action_add_entity(req, entity_id);
+  ha_action_add_data_template(req, "rgb_color", "{{ [red | int, green | int, blue | int] }}");
+  char red[4];
+  char green[4];
+  char blue[4];
+  snprintf(red, sizeof(red), "%u", static_cast<unsigned>((color >> 16) & 0xFF));
+  snprintf(green, sizeof(green), "%u", static_cast<unsigned>((color >> 8) & 0xFF));
+  snprintf(blue, sizeof(blue), "%u", static_cast<unsigned>(color & 0xFF));
+  ha_action_add_variable(req, "red", red);
+  ha_action_add_variable(req, "green", green);
+  ha_action_add_variable(req, "blue", blue);
+  ha_action_send(req);
+}
+
 inline const char *light_temp_icon(const std::string &icon) {
   return (!icon.empty() && icon != "Auto") ? find_icon(icon.c_str()) : find_icon("Lightbulb");
 }
@@ -414,6 +671,19 @@ inline void send_media_volume_action(const std::string &entity_id, int value) {
   send_media_player_action(entity_id, "media_player.volume_set", "volume_level", buf);
 }
 
+inline void send_media_volume_command(
+    const std::string &entity_id,
+    const espcontrol::media::VolumeCommand &command) {
+  using espcontrol::media::VolumeCommandKind;
+  if (command.kind == VolumeCommandKind::SET_ABSOLUTE) {
+    send_media_volume_action(entity_id, command.value);
+  } else if (command.kind == VolumeCommandKind::STEP_DOWN) {
+    send_media_player_action(entity_id, "media_player.volume_down");
+  } else if (command.kind == VolumeCommandKind::STEP_UP) {
+    send_media_player_action(entity_id, "media_player.volume_up");
+  }
+}
+
 inline void send_media_seek_action(const std::string &entity_id, int value, float duration) {
   if (duration <= 0.0f) return;
   if (value < 0) value = 0;
@@ -424,10 +694,82 @@ inline void send_media_seek_action(const std::string &entity_id, int value, floa
   send_media_player_action(entity_id, "media_player.media_seek", "seek_position", buf);
 }
 
+inline void send_media_source_action(const std::string &entity_id,
+                                     const std::string &source) {
+  if (entity_id.empty() || source.empty()) return;
+  send_media_player_action(entity_id, "media_player.select_source", "source", source.c_str());
+}
+
 inline void send_media_playback_action(const std::string &entity_id,
                                        const std::string &mode) {
   if (entity_id.empty()) return;
   send_media_player_action(entity_id, media_service_for_mode(mode));
+}
+
+inline uint32_t next_media_playlist_call_id() {
+  static uint32_t call_id = 400000;
+  return call_id++;
+}
+
+inline void send_media_playlist_action(const ParsedCfg &p) {
+  if (p.entity.empty()) return;
+  const auto config = espcontrol::media::decode_config_v1(p);
+  const std::string &content_id = config.playlist_content_id;
+  if (content_id.empty()) {
+    ESP_LOGW("media", "Playlist button for %s has no media content ID", p.entity.c_str());
+    return;
+  }
+  const std::string &content_type = config.playlist_content_type;
+  const std::string &player_source = config.playlist_player_source;
+  ESP_LOGI("media", "Playlist button: entity=%s content_type=%s content_id=%s playback_device=%s",
+           p.entity.c_str(), content_type.c_str(), content_id.c_str(),
+           player_source.empty() ? "(none)" : player_source.c_str());
+  if (!player_source.empty()) {
+    esphome::api::HomeassistantActionRequest source_req;
+    uint32_t source_call_id = next_media_playlist_call_id();
+    if (ha_action_begin(source_req, "media_player.select_source", false, 2, source_call_id)) {
+      ha_action_add_entity(source_req, p.entity);
+      ha_action_add_data(source_req, "source", player_source.c_str());
+      std::string entity_id = p.entity;
+      std::string source = player_source;
+      ha_register_action_response_callback(
+        source_req.call_id,
+        [entity_id, source](const esphome::api::ActionResponse &response) {
+          if (response.is_success()) {
+            ESP_LOGI("media", "media_player.select_source accepted for %s source=%s",
+                     entity_id.c_str(), source.c_str());
+            return;
+          }
+          ESP_LOGW("media", "media_player.select_source failed for %s source=%s: %s",
+                   entity_id.c_str(), source.c_str(), response.get_error_message().c_str());
+        });
+      if (!ha_action_send(source_req)) {
+        ha_cancel_action_response_callback(source_req.call_id, "send failed");
+      }
+    }
+  }
+  esphome::api::HomeassistantActionRequest req;
+  uint32_t play_call_id = next_media_playlist_call_id();
+  if (!ha_action_begin(req, "media_player.play_media", false, 3, play_call_id)) return;
+  ha_action_add_entity(req, p.entity);
+  ha_action_add_data(req, "media_content_id", content_id.c_str());
+  ha_action_add_data(req, "media_content_type", content_type.c_str());
+  std::string entity_id = p.entity;
+  ha_register_action_response_callback(
+    req.call_id,
+    [entity_id, content_type, content_id](const esphome::api::ActionResponse &response) {
+      if (response.is_success()) {
+        ESP_LOGI("media", "media_player.play_media accepted for %s type=%s id=%s",
+                 entity_id.c_str(), content_type.c_str(), content_id.c_str());
+        return;
+      }
+      ESP_LOGW("media", "media_player.play_media failed for %s type=%s id=%s: %s",
+               entity_id.c_str(), content_type.c_str(), content_id.c_str(),
+               response.get_error_message().c_str());
+    });
+  if (!ha_action_send(req)) {
+    ha_cancel_action_response_callback(req.call_id, "send failed");
+  }
 }
 
 inline bool media_fast_press_mode(const std::string &mode) {
@@ -447,11 +789,31 @@ inline bool media_fast_press_consume(int slot_num) {
   return sent;
 }
 
+inline bool button_press_opens_modal(const ParsedCfg &config, lv_obj_t *button) {
+  const auto context = card_runtime_context(config);
+  if (card_runtime_main_click_opens_modal(context)) return true;
+
+  using Driver = espcontrol::card_runtime::CardDriverId;
+  if (context.runtime.driver == Driver::ACTION) {
+    return action_script_confirmation_enabled(config);
+  }
+  if (context.runtime.driver == Driver::TOGGLE && button &&
+      !is_button_entity(config.entity)) {
+    return switch_confirmation_required(
+      config, lv_obj_has_state(button, LV_STATE_CHECKED));
+  }
+  return false;
+}
+
 inline void handle_button_press(const std::string &cfg, int slot_num,
                                 lv_obj_t *btn_obj) {
   if (slot_num <= 0 || slot_num > MAX_GRID_SLOTS) return;
-  if (btn_obj && lv_obj_has_state(btn_obj, LV_STATE_DISABLED)) return;
   ParsedCfg p = parse_cfg(cfg);
+  if (btn_obj && button_press_opens_modal(p, btn_obj)) {
+    // The modal replaces this card on release. Clearing the state inside the
+    // press event avoids scheduling a pointless pressed-card repaint first.
+    lv_obj_clear_state(btn_obj, LV_STATE_PRESSED);
+  }
   if (p.type != "media") return;
   std::string mode = media_card_mode(p.sensor);
   if (!media_fast_press_mode(mode) || p.entity.empty()) return;
@@ -463,6 +825,9 @@ inline void handle_button_press(const std::string &cfg, int slot_num,
 
 struct MediaVolumeCtx;
 inline void media_volume_open_modal(MediaVolumeCtx *ctx);
+struct MediaControlCtx;
+inline void media_control_open_modal(MediaControlCtx *ctx);
+inline MediaControlCtx *grid_media_control_runtime_for_owner(lv_obj_t *owner);
 struct ClimateControlCtx;
 inline void climate_control_open_modal(ClimateControlCtx *ctx);
 struct ImageCardCtx;
@@ -482,115 +847,79 @@ inline bool alarm_action_context_valid(AlarmActionCtx *action);
 struct FanCardCtx;
 inline bool fan_non_speed_card_type(const std::string &type);
 inline void fan_card_handle_click(FanCardCtx *ctx);
+inline void fan_control_open_modal(FanCardCtx *ctx);
+struct CoverControlCtx;
+inline void cover_control_open_modal(CoverControlCtx *ctx);
+struct LightControlCtx;
+inline void light_control_open_modal(LightControlCtx *ctx);
+
+namespace espcontrol::cards {
+inline bool basic_action_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config,
+    int slot_number, lv_obj_t *button);
+inline bool numeric_selectable_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool cleaning_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool access_cover_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool cover_modal_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool navigation_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool image_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool light_control_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool fan_control_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool climate_control_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool alarm_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool media_driver_handle_main_click(
+    const Context &context, const ParsedCfg &config, lv_obj_t *button);
+inline bool legacy_compatibility_driver_handle_main_click(
+    const Context &context, lv_obj_t *button);
+}
 
 // Handle a main-grid button press: dispatch push event, subpage nav,
 // slider toggle, or entity toggle based on the config string.
 inline void handle_button_click(const std::string &cfg, int slot_num,
                                 lv_obj_t *btn_obj) {
+  (void) btn_obj;
   if (media_fast_press_consume(slot_num)) return;
-  if (btn_obj && lv_obj_has_state(btn_obj, LV_STATE_DISABLED)) return;
   ParsedCfg p = parse_cfg(cfg);
-  if (p.type == "sensor" || p.type == "text_sensor" ||
-      p.type == "door_window" ||
-      p.type == "presence" ||
-      p.type == "calendar" || p.type == "clock" || p.type == "timezone" ||
-      p.type == "weather_forecast") return;
-  if (p.type == "screen_lock") {
-    screen_lock_toggle();
-  } else if (p.type == "push") {
-    std::string label = p.label;
-    if (label.empty()) {
-      char buf[16];
-      snprintf(buf, sizeof(buf), "Push %d", slot_num);
-      label = buf;
-    }
-    esphome::api::HomeassistantActionRequest req;
-    if (!ha_action_begin(req, "esphome.push_button_pressed", true, 2)) return;
-    ha_action_add_data(req, "label", label.c_str());
-    char slot_buf[8];
-    snprintf(slot_buf, sizeof(slot_buf), "%d", slot_num);
-    ha_action_add_data(req, "slot", slot_buf);
-    ha_action_send(req);
-  } else if (p.type == "subpage") {
-    lv_obj_t *sub_scr = (lv_obj_t *)lv_obj_get_user_data(btn_obj);
-    if (sub_scr)
-      lv_scr_load_anim(sub_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
-  } else if (p.type == "alarm") {
-    AlarmCardCtx *ctx = (AlarmCardCtx *)lv_obj_get_user_data(btn_obj);
-    if (alarm_card_context_valid(ctx)) alarm_card_open_page(ctx);
-  } else if (p.type == "alarm_action") {
-    AlarmActionCtx *ctx = (AlarmActionCtx *)lv_obj_get_user_data(btn_obj);
-    if (alarm_action_context_valid(ctx)) alarm_action_activate(ctx);
-  } else if (fan_non_speed_card_type(p.type)) {
-    FanCardCtx *ctx = (FanCardCtx *)lv_obj_get_user_data(btn_obj);
-    if (ctx) fan_card_handle_click(ctx);
-  } else if (p.type == "garage") {
-    if (garage_command_mode(p.sensor)) {
-      send_cover_command_action(p);
-    } else if (garage_card_show_status(p)) {
-      return;
-    } else if (!p.entity.empty()) {
-      set_card_checked_state(btn_obj, true);
-      send_toggle_action(p.entity);
-    }
-  } else if (p.type == "lock") {
-    if (lock_command_mode(p.sensor)) {
-      send_lock_command_action(p);
-    } else {
-      LockCardCtx *ctx = (LockCardCtx *)lv_obj_get_user_data(btn_obj);
-      if (ctx) send_lock_action(ctx);
-      else send_lock_action(p.entity, "");
-    }
-  } else if (p.type == "cover" && cover_command_mode(p.sensor)) {
-    send_cover_command_action(p);
-  } else if (p.type == "cover" && cover_toggle_mode(p.sensor)) {
-    if (!p.entity.empty()) {
-      set_card_checked_state(btn_obj, true);
-      send_toggle_action(p.entity);
-    }
-  } else if (p.type == "internal") {
-    if (!p.entity.empty()) send_internal_relay_action(p);
-  } else if (p.type == "action") {
-    if (action_card_option_select(p)) {
-      OptionSelectCtx *ctx = (OptionSelectCtx *)lv_obj_get_user_data(btn_obj);
-      if (ctx) option_select_open_modal(ctx);
-    } else {
-      send_action_card_action(p);
-    }
-  } else if (p.type == "webhook") {
-    send_webhook_action(p);
-  } else if (p.type == "todo") {
-    TodoCardCtx *ctx = (TodoCardCtx *)lv_obj_get_user_data(btn_obj);
-    if (todo_card_context_valid(ctx)) todo_card_open_modal(ctx);
-  } else if (p.type == "media") {
-    std::string mode = media_card_mode(p.sensor);
-    if (mode == "volume") {
-      MediaVolumeCtx *ctx = (MediaVolumeCtx *)lv_obj_get_user_data(btn_obj);
-      if (ctx) media_volume_open_modal(ctx);
-    } else if (mode == "now_playing" && p.precision == "play_pause") {
-      send_media_playback_action(p.entity, "play_pause");
-    } else if (media_playback_button_mode(mode)) {
-      send_media_playback_action(p.entity, mode);
-    }
-  } else if (p.type == "climate") {
-    ClimateControlCtx *ctx = (ClimateControlCtx *)lv_obj_get_user_data(btn_obj);
-    if (ctx) climate_control_open_modal(ctx);
-  } else if (p.type == "image") {
-    ImageCardCtx *ctx = (ImageCardCtx *)lv_obj_get_user_data(btn_obj);
-    if (ctx) image_card_open_modal(ctx);
-  } else if (p.type == "light_temperature") {
-    // Tap does nothing; only dragging the slider sends commands.
-  } else if (brightness_slider_type(p.type) || p.type == "cover") {
-    if (!p.entity.empty()) send_slider_action(p.entity, -1, cover_tilt_mode(p.sensor));
-  } else {
-    if (!p.entity.empty()) {
-      bool currently_on = btn_obj && lv_obj_has_state(btn_obj, LV_STATE_CHECKED);
-      if (switch_confirmation_required(p, currently_on) && btn_obj &&
-          !is_button_entity(p.entity)) {
-        switch_confirmation_open_modal(p, btn_obj, !currently_on);
-      } else {
-        send_toggle_action(p.entity);
-      }
-    }
-  }
+  const auto context = card_runtime_context(p);
+  ESP_LOGI("button", "Main button %d clicked: type=%s entity=%s mode=%s label=%s",
+           slot_num, p.type.c_str(), p.entity.c_str(), p.sensor.c_str(), p.label.c_str());
+  if (card_runtime_passive(context)) return;
+  if (espcontrol::cards::basic_action_driver_handle_main_click(
+        context, p, slot_num, btn_obj)) return;
+  if (espcontrol::cards::numeric_selectable_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::cleaning_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::access_cover_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::cover_modal_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::navigation_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::image_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::light_control_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::fan_control_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::climate_control_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::alarm_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::media_driver_handle_main_click(
+        context, p, btn_obj)) return;
+  if (espcontrol::cards::legacy_compatibility_driver_handle_main_click(
+        context, btn_obj)) return;
+  ESP_LOGE("card_runtime", "Card has no main-grid action driver: type=%s",
+           p.type.c_str());
 }

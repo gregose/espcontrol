@@ -1,9 +1,18 @@
 .DS_Store
 .cache/
+.worktrees/
 node_modules/
+/build/
+/dist/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 .esphome/
+.venv/
+.platformio/
+.platformio-run/
+.pio-core/
+.firmware-deps/
+.tmp-pr*/
 __pycache__/
 builds/.esphome/
 
@@ -14,3 +23,6 @@ secrets.yml
 *.secrets.yml
 wifi_secrets*.yaml
 wifi-secrets*.yaml
+
+# Temporary local ESPHome entry points used when flashing PR builds.
+devices/*/dev-pr*.yaml
