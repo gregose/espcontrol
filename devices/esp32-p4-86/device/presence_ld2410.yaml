@@ -177,7 +177,8 @@ select:
       disabled_by_default: true
     out_pin_level:
       name: "Radar OUT Pin Level"
-      disabled_by_default: true
+      id: ld2410_out_pin_level
+      internal: true
 
 button:
   - platform: ld2410
@@ -208,4 +209,8 @@ esphome:
     - priority: -100
       then:
         - delay: 5s
+        - select.set:
+            id: ld2410_out_pin_level
+            option: high
+        - delay: 1s
         - switch.turn_off: ld2410_bluetooth
