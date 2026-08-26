@@ -986,6 +986,9 @@
               "voice_stt_failure_chime_file": "\"https://raw.githubusercontent.com/jtenniswood/espcontrol/main/devices/esp32-p4-86/device/voice_stt_failure_chime.flac\"",
               "alarm_delay_entry_beep_file": "\"https://raw.githubusercontent.com/jtenniswood/espcontrol/30ea813b1e2d4008b019c30862dce478d238a697/devices/esp32-p4-86/device/alarm_delay_entry_beep.flac\"",
               "alarm_delay_exit_beep_file": "\"https://raw.githubusercontent.com/jtenniswood/espcontrol/30ea813b1e2d4008b019c30862dce478d238a697/devices/esp32-p4-86/device/alarm_delay_exit_beep.flac\""
+            },
+            "extraPackages": {
+              "presence_ld2410": "!include device/presence_ld2410.yaml"
             }
           }
         }

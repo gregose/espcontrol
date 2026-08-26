@@ -1185,7 +1185,8 @@
           "ethernetSelectable": true,
           "extraPackages": {
             "voice_assistant": "!include device/voice_assistant.yaml",
-            "physical_volume_button": "!include device/physical_volume_button${network_package_suffix}.yaml"
+            "physical_volume_button": "!include device/physical_volume_button${network_package_suffix}.yaml",
+            "presence_ld2410": "!include device/presence_ld2410.yaml"
           },
           "backlightPwmFrequency": {
             "wifi": "100Hz",

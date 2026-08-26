@@ -161,6 +161,7 @@ packages:
   fw_update:       !include ../../common/addon/firmware_update${firmware_update_package_suffix}.yaml
   voice_assistant: !include device/voice_assistant.yaml
   physical_volume_button: !include device/physical_volume_button${network_package_suffix}.yaml
+  presence_ld2410: !include device/presence_ld2410.yaml
 
   # ---------------------------------------------------------------------------
   # Screens (loading must be first page for LVGL startup)

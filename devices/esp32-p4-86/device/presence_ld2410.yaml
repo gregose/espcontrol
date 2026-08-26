@@ -1,0 +1,216 @@
+# =============================================================================
+# PRESENCE (LD2410) - Optional HLK-LD2410B mmWave radar on the P3 header
+# =============================================================================
+# Adds an optional mmWave presence sensor wired to the ESP32-P4 over UART on the
+# P3 expansion header. Exposes the radar's presence/distance readings and its
+# configuration controls to Home Assistant. No panel-UI integration (that is a
+# later phase).
+#
+# Wiring (P3 header):
+#   LD2410B VCC -> P3 5V (>=200 mA)      LD2410B GND -> P3 GND
+#   LD2410B RX  <- GPIO20 (P4 TX)        LD2410B TX  -> GPIO21 (P4 RX)   (cross TX/RX)
+#   LD2410B OUT -> GPIO22                 (optional independent presence line)
+# GPIO20/21/22 are clear of the Ethernet RMII block (GPIO28-31, 34, 35, 49-52),
+# so the same pins are valid on both the WiFi and the Ethernet variant. IO is
+# 3.3V TTL - no level shifter needed.
+#
+# Optional hardware: the panel must boot and run normally with no sensor wired
+# (entities simply read unavailable; no boot-loop, no log flooding). Startup is
+# never gated on LD2410 responses.
+#
+# NOTE on update rate: ESPHome 2026.5.x removed the hub-level `throttle:` option.
+# The 1s rate limit into Home Assistant is now baked into each LD2410 sensor as
+# `timeout` + `throttle_with_priority: 1s` filters, so no hub throttle is set.
+# =============================================================================
+
+uart:
+  - id: uart_ld2410
+    tx_pin: GPIO20      # P4 TX -> LD2410 RX
+    rx_pin: GPIO21      # P4 RX <- LD2410 TX
+    baud_rate: 256000   # LD2410B factory default (8N1)
+    parity: NONE
+    stop_bits: 1
+
+ld2410:
+  id: ld2410_radar
+  uart_id: uart_ld2410
+
+# ---------------------------------------------------------------------------
+# Presence / target state
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    has_target:
+      name: "Radar Presence"
+      id: ld2410_has_target
+    has_moving_target:
+      name: "Radar Moving Target"
+    has_still_target:
+      name: "Radar Still Target"
+  # Optional independent hardware presence line off the LD2410B OUT pin. This is
+  # a plain GPIO read, independent of UART parsing - the fastest/most robust wake
+  # source for a later screensaver phase. Reads low (unavailable behaviour is a
+  # steady level) when no sensor is attached.
+  - platform: gpio
+    name: "Radar Presence (OUT pin)"
+    id: ld2410_out
+    device_class: occupancy
+    pin:
+      number: GPIO22    # third P3 pin; clear of Ethernet RMII
+      mode:
+        input: true
+        pulldown: true
+
+# ---------------------------------------------------------------------------
+# Distance / energy / light readings
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    moving_distance:
+      name: "Radar Moving Distance"
+    still_distance:
+      name: "Radar Still Distance"
+    detection_distance:
+      name: "Radar Detection Distance"
+    # Photodiode lux - only updates while engineering_mode is on. Diagnostic
+    # (entity_category baked in by the component) and hidden by default.
+    light:
+      name: "Radar Light"
+      disabled_by_default: true
+    # Per-gate move/still energy. Diagnostic (baked in) + hidden by default so
+    # Home Assistant is not flooded; enable individual gates when tuning.
+    g0:
+      move_energy:  { name: "Radar Gate 0 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 0 Still Energy", disabled_by_default: true }
+    g1:
+      move_energy:  { name: "Radar Gate 1 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 1 Still Energy", disabled_by_default: true }
+    g2:
+      move_energy:  { name: "Radar Gate 2 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 2 Still Energy", disabled_by_default: true }
+    g3:
+      move_energy:  { name: "Radar Gate 3 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 3 Still Energy", disabled_by_default: true }
+    g4:
+      move_energy:  { name: "Radar Gate 4 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 4 Still Energy", disabled_by_default: true }
+    g5:
+      move_energy:  { name: "Radar Gate 5 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 5 Still Energy", disabled_by_default: true }
+    g6:
+      move_energy:  { name: "Radar Gate 6 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 6 Still Energy", disabled_by_default: true }
+    g7:
+      move_energy:  { name: "Radar Gate 7 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 7 Still Energy", disabled_by_default: true }
+    g8:
+      move_energy:  { name: "Radar Gate 8 Move Energy",  disabled_by_default: true }
+      still_energy: { name: "Radar Gate 8 Still Energy", disabled_by_default: true }
+
+# ---------------------------------------------------------------------------
+# Diagnostics (hidden by default)
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    version:
+      name: "Radar Firmware Version"
+      disabled_by_default: true
+    mac_address:
+      name: "Radar MAC Address"
+      disabled_by_default: true
+
+# ---------------------------------------------------------------------------
+# Configuration controls (entity_category: config baked in by the component)
+# ---------------------------------------------------------------------------
+number:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    # Detection envelope. These three form one inclusive group.
+    timeout:
+      name: "Radar Presence Timeout"
+    max_move_distance_gate:
+      name: "Radar Max Move Distance Gate"
+    max_still_distance_gate:
+      name: "Radar Max Still Distance Gate"
+    # Per-gate sensitivity thresholds (hidden by default to keep HA tidy).
+    g0:
+      move_threshold:  { name: "Radar Gate 0 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 0 Still Threshold", disabled_by_default: true }
+    g1:
+      move_threshold:  { name: "Radar Gate 1 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 1 Still Threshold", disabled_by_default: true }
+    g2:
+      move_threshold:  { name: "Radar Gate 2 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 2 Still Threshold", disabled_by_default: true }
+    g3:
+      move_threshold:  { name: "Radar Gate 3 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 3 Still Threshold", disabled_by_default: true }
+    g4:
+      move_threshold:  { name: "Radar Gate 4 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 4 Still Threshold", disabled_by_default: true }
+    g5:
+      move_threshold:  { name: "Radar Gate 5 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 5 Still Threshold", disabled_by_default: true }
+    g6:
+      move_threshold:  { name: "Radar Gate 6 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 6 Still Threshold", disabled_by_default: true }
+    g7:
+      move_threshold:  { name: "Radar Gate 7 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 7 Still Threshold", disabled_by_default: true }
+    g8:
+      move_threshold:  { name: "Radar Gate 8 Move Threshold",  disabled_by_default: true }
+      still_threshold: { name: "Radar Gate 8 Still Threshold", disabled_by_default: true }
+
+select:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    distance_resolution:
+      name: "Radar Distance Resolution"
+    baud_rate:
+      name: "Radar Baud Rate"
+      disabled_by_default: true
+    light_function:
+      name: "Radar Light Function"
+      disabled_by_default: true
+    out_pin_level:
+      name: "Radar OUT Pin Level"
+      id: ld2410_out_pin_level
+      internal: true
+
+button:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    factory_reset:
+      name: "Radar Factory Reset"
+    restart:
+      name: "Radar Restart"
+    query_params:
+      name: "Radar Query Params"
+
+switch:
+  - platform: ld2410
+    ld2410_id: ld2410_radar
+    # Engineering mode streams high-rate per-gate data - keep it off by default.
+    engineering_mode:
+      name: "Radar Engineering Mode"
+      restore_mode: RESTORE_DEFAULT_OFF
+    # LD2410B ships with BLE on (default password "HiLink"). For a fixed wall
+    # install, expose the switch and turn it off at boot to remove the open radio.
+    bluetooth:
+      name: "Radar Bluetooth"
+      id: ld2410_bluetooth
+      restore_mode: RESTORE_DEFAULT_OFF
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - delay: 5s
+        - select.set:
+            id: ld2410_out_pin_level
+            option: high
+        - delay: 1s
+        - switch.turn_off: ld2410_bluetooth
