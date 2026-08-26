@@ -165,6 +165,11 @@ inline bool local_sensor_apply_binary(const std::string &key, bool value) {
   return applied;
 }
 
+inline bool local_sensor_dispatch_binary_update(const std::string &key,
+                                                bool value) {
+  return local_sensor_apply_binary(key, value);
+}
+
 template<typename BinarySensor>
 inline void local_sensor_bind_binary_source(const std::string &key,
                                             BinarySensor *sensor) {

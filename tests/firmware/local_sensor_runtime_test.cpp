@@ -110,6 +110,26 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  lv_obj_t numeric_owner;
+  lv_obj_t numeric_label;
+  numeric_label.text = "numeric unchanged";
+  LocalSensorControl numeric_control;
+  numeric_control.key = "radar_presence";
+  numeric_control.kind = LocalSensorValueKind::NUMERIC;
+  numeric_control.owner = &numeric_owner;
+  numeric_control.sensor_lbl = &numeric_label;
+  local_sensor_register_control(numeric_control);
+  if (!expect(local_sensor_dispatch_binary_update("radar_presence", false),
+              "bool fallback should find the binary card") ||
+      !expect(label.text == "Radar Presence: Off",
+              "bool dispatch should update the binary card") ||
+      !expect(icon.text == "off-glyph",
+              "bool dispatch should apply the binary off icon") ||
+      !expect(numeric_label.text == "numeric unchanged",
+              "bool dispatch should not update a numeric card with the same key")) {
+    return EXIT_FAILURE;
+  }
+
   clear_local_sensor_controls();
   if (!expect(!local_sensor_apply_binary("radar_presence", false),
               "a removed card should no longer receive local sensor updates") ||

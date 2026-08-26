@@ -188,6 +188,12 @@ inline void send_local_sensor_update(const std::string &key, float value) {
   }
 }
 
+inline void send_local_sensor_update(const std::string &key, bool value) {
+  if (!local_sensor_dispatch_binary_update(key, value)) {
+    ESP_LOGW("espcontrol", "Local sensor '%s' not registered", key.c_str());
+  }
+}
+
 inline void send_local_sensor_update(const std::string &key, const char *value) {
   if (!local_sensor_apply_text(key, value ? value : "--")) {
     ESP_LOGW("espcontrol", "Local sensor '%s' not registered", key.c_str());
