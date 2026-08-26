@@ -1140,6 +1140,21 @@
     }
   },
   {
+    "name": "sensor: local_binary",
+    "input": "~radar_presence,,Auto,Auto,local,,sensor,binary,",
+    "expected": {
+      "entity": "radar_presence",
+      "label": "",
+      "icon": "Auto",
+      "icon_on": "Auto",
+      "sensor": "local",
+      "unit": "",
+      "type": "sensor",
+      "precision": "binary",
+      "options": ""
+    }
+  },
+  {
     "name": "local_sensor: legacy_local_sensor",
     "input": "~room_temp,,Auto,Auto,local,,local_sensor,1,",
     "expected": {

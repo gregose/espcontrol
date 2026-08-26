@@ -117,7 +117,12 @@ inline bool normalize_saved_config_sensor_shadow(Config &config) {
   if (config.icon.empty()) config.icon = "Auto";
   if (config.icon_on.empty()) config.icon_on = "Auto";
   if (config.sensor != "local" && config.precision == "time") { config.unit.clear(); config.icon = "Auto"; config.icon_on = "Auto"; }
-  if (config.sensor == "local") { config.icon_on = "Auto"; config.options.clear(); if (config.precision != "text" && config.precision != "1" && config.precision != "2") config.precision.clear(); if (config.precision != "text" && (config.icon.empty() || config.icon == "Auto")) config.icon = "Auto"; return true; }
+  if (config.sensor == "local") {
+    const std::string source = config.options;
+    if (config.precision != "binary" && config.precision != "text" && config.precision != "1" && config.precision != "2") config.precision.clear();
+    if (config.precision == "binary") { config.unit.clear(); config.options = cfg_option_token_present(source, "active_color") ? "active_color" : ""; return true; }
+    config.icon_on = "Auto"; config.options.clear(); if (config.precision != "text" && (config.icon.empty() || config.icon == "Auto")) config.icon = "Auto"; return true;
+  }
   const std::string source = config.options; std::string out;
   if (config.precision != "icon" && config.precision != "text" && config.precision != "time") append_large_numbers_option(out, source);
   if (config.precision != "time" && cfg_option_token_present(source, "active_color")) saved_config_shadow_append_option(out, "active_color");

@@ -1,5 +1,10 @@
 import type { CardConfig } from "../../src/webserver/contracts/types";
-import { createSensorCardModeController } from "../../src/webserver/features/sensor_card_mode_controller";
+import {
+  createSensorCardModeController,
+  localBinarySensorDefaultIcons,
+  localSensorEntriesForMode,
+  localSensorModeForType,
+} from "../../src/webserver/features/sensor_card_mode_controller";
 
 function equal<T>(actual: T, expected: T, message: string): void {
   if (actual !== expected) throw new Error(`${message}: expected ${String(expected)}, received ${String(actual)}`);
@@ -42,4 +47,34 @@ export function runSensorCardModeControllerTests(): void {
   equal(numeric.precision, "", "numeric mode clears the mode marker");
   equal(numeric.icon, "Auto", "numeric mode resets the icon");
   equal(numeric.options, ":old", "numeric mode normalizes options with empty precision");
+
+  const binary = card({ unit: "%", options: "active_color" });
+  const binaryTransition = controller.selectDisplayMode(binary, "binary");
+  equal(binaryTransition.mode, "binary", "binary display mode is selected");
+  equal(binary.precision, "binary", "binary mode stores its stable precision marker");
+  equal(binary.unit, "", "binary mode clears numeric units");
+  equal(binary.icon, "mdi:home", "binary mode retains its off icon");
+  equal(binary.icon_on, "mdi:home", "binary mode retains its on icon");
+  equal(controller.displayMode(binary), "binary", "binary mode survives reload detection");
+  equal(binary.options, "binary:active_color", "binary mode normalizes persisted options");
+
+  const discovered = [
+    { key: "temperature", name: "Temperature", unit: "°C", type: "numeric" as const },
+    { key: "status", name: "Status", type: "text" as const },
+    { key: "presence", name: "Presence", type: "binary" as const, device_class: "occupancy" },
+    { key: "online", name: "Online", type: "binary" as const, internal: true },
+  ];
+  equal(localSensorEntriesForMode(discovered, "numeric", false).length, 1, "numeric discovery filters numeric values");
+  equal(localSensorEntriesForMode(discovered, "text", false)[0]?.key, "status", "text discovery filters text values");
+  equal(localSensorEntriesForMode(discovered, "binary", false)[0]?.key, "presence", "binary discovery filters binary values");
+  equal(localSensorEntriesForMode(discovered, "binary", true).length, 2, "binary discovery can include internal values");
+  equal(localSensorModeForType("binary"), "binary", "binary discovery selects binary mode");
+  equal(localSensorModeForType("unexpected"), "numeric", "unknown discovery types remain numeric-compatible");
+
+  const occupancyIcons = localBinarySensorDefaultIcons("occupancy");
+  equal(occupancyIcons.off, "Motion Sensor Off", "occupancy uses a clear-state icon");
+  equal(occupancyIcons.on, "Motion Sensor", "occupancy uses a detected-state icon");
+  const genericIcons = localBinarySensorDefaultIcons("");
+  equal(genericIcons.off, "Circle Outline", "generic binary values have a safe off icon");
+  equal(genericIcons.on, "Check", "generic binary values have a safe on icon");
 }

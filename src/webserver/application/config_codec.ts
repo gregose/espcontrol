@@ -212,6 +212,14 @@ export function createConfigCodecFeature(
         if (sensorCardIsLocal(b)) {
             b.type = "sensor";
             b.sensor = SENSOR_CARD_LOCAL_SENSOR;
+            if (b.precision === "binary") {
+                b.unit = "";
+                if (!b.icon)
+                    b.icon = "Auto";
+                if (!b.icon_on)
+                    b.icon_on = "Auto";
+                return;
+            }
             b.icon_on = "Auto";
             b.options = "";
             if (b.precision !== "text" && b.precision !== "1" && b.precision !== "2")
@@ -549,8 +557,10 @@ export function createConfigCodecFeature(
         var precision: any = (isActionOptionSelect || type === "clock" || type === "light_switch" || type === "light_control" || type === "alarm" || type === "alarm_action" || type === "lock" || type === "screen_lock" || type === "timezone" || isFanCardType(type)) ? "" : (b && b.precision || "");
         if (isLocalAction)
             precision = "";
-        if (sensor === SENSOR_CARD_LOCAL_SENSOR && precision !== "text" && precision !== "1" && precision !== "2")
+        if (sensor === SENSOR_CARD_LOCAL_SENSOR && precision !== "binary" && precision !== "text" && precision !== "1" && precision !== "2")
             precision = "";
+        if (sensor === SENSOR_CARD_LOCAL_SENSOR && precision === "binary")
+            unit = "";
         if (type === "media") {
             sensor = mediaEditorMode(sensor);
             if (sensor === "now_playing" && configOptionEnabled(b && b.options, MEDIA_COVER_ART_OPTION))
@@ -656,7 +666,9 @@ export function createConfigCodecFeature(
             options = normalizeTodoOptions(options);
         }
         else if (type === "sensor") {
-            options = sensor === SENSOR_CARD_LOCAL_SENSOR ? "" : normalizeSensorOptions(options, precision);
+            options = sensor === SENSOR_CARD_LOCAL_SENSOR
+                ? (precision === "binary" && configOptionEnabled(options, "active_color") ? "active_color" : "")
+                : normalizeSensorOptions(options, precision);
         }
         else if (type === "door_window") {
             options = normalizeDoorWindowOptions(options);

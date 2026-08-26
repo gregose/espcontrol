@@ -4974,7 +4974,8 @@
                 "value": [
                   "icon",
                   "text",
-                  "time"
+                  "time",
+                  "binary"
                 ],
                 "negate": true
               }
@@ -4983,7 +4984,8 @@
               "precisionNot": [
                 "icon",
                 "text",
-                "time"
+                "time",
+                "binary"
               ]
             }
           },
@@ -5206,7 +5208,8 @@
         "hidden": true,
         "domains": [
           "sensor",
-          "text_sensor"
+          "text_sensor",
+          "binary_sensor"
         ],
         "default": {
           "entity": "",
