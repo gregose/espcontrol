@@ -290,6 +290,20 @@ def test_upgrades_do_not_reset_saved_panel_config() -> None:
         )
 
 
+def test_p4_86_ld2410_out_pin_polarity() -> None:
+    presence_path = ROOT / "devices" / "esp32-p4-86" / "device" / "presence_ld2410.yaml"
+    presence = presence_path.read_text(encoding="utf-8")
+    out_pin_section = presence.split("  - platform: gpio\n", 1)[1].split(
+        "\n# --------", 1
+    )[0]
+    assert "id: ld2410_out" in out_pin_section, "P4-86 LD2410 OUT GPIO sensor is missing"
+    assert "pulldown: true" in out_pin_section, "P4-86 LD2410 OUT input must remain clear when unplugged"
+    assert "inverted: true" not in out_pin_section, "P4-86 LD2410 OUT input must not invert the unplugged pulldown"
+    assert (
+        "id: ld2410_out_pin_level\n            option: low" in presence
+    ), "P4-86 LD2410 OUT must be configured low when clear and high while occupied"
+
+
 def test_local_voice_generation_uses_capability() -> None:
     voice_device = {
         "slug": "semantic-voice-test",
@@ -766,6 +780,7 @@ def main() -> int:
     test_generated_yaml(profiles)
     test_ota_preserves_deployed_partition_layouts()
     test_upgrades_do_not_reset_saved_panel_config()
+    test_p4_86_ld2410_out_pin_polarity()
     test_local_voice_generation_uses_capability()
     test_square_s3_reapplies_clock_bar_after_screen_changes()
     test_rotation_refresh_rebuilds_subpages()
