@@ -6,7 +6,7 @@
 # configuration controls to Home Assistant. No panel-UI integration (that is a
 # later phase).
 #
-# Wiring (P3 header - VERIFY against the printed silkscreen before flashing):
+# Wiring (P3 header):
 #   LD2410B VCC -> P3 5V (>=200 mA)      LD2410B GND -> P3 GND
 #   LD2410B RX  <- GPIO20 (P4 TX)        LD2410B TX  -> GPIO21 (P4 RX)   (cross TX/RX)
 #   LD2410B OUT -> GPIO22                 (optional independent presence line)
@@ -25,8 +25,8 @@
 
 uart:
   - id: uart_ld2410
-    tx_pin: GPIO20      # P4 TX -> LD2410 RX  (VERIFY against P3 silkscreen)
-    rx_pin: GPIO21      # P4 RX <- LD2410 TX  (VERIFY against P3 silkscreen)
+    tx_pin: GPIO20      # P4 TX -> LD2410 RX
+    rx_pin: GPIO21      # P4 RX <- LD2410 TX
     baud_rate: 256000   # LD2410B factory default (8N1)
     parity: NONE
     stop_bits: 1
@@ -57,7 +57,7 @@ binary_sensor:
     id: ld2410_out
     device_class: occupancy
     pin:
-      number: GPIO22    # third P3 pin (VERIFY; clear of Ethernet RMII)
+      number: GPIO22    # third P3 pin; clear of Ethernet RMII
       mode:
         input: true
         pulldown: true

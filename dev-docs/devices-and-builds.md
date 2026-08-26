@@ -84,44 +84,6 @@ python3 scripts/local_esphome.py devices/<slug>/dev.yaml run --device <ip> --no-
 OTA upload only works after the display is already running EspControl firmware
 and is connected to the network. First flash is over USB.
 
-### P4-86 LD2410 Docker Workflow
-
-The P4-86 factory image, including the optional LD2410 package, can be compiled
-inside a retained ESPHome container whose self-contained source checkout is
-mounted at `/config`:
-
-```bash
-docker exec espcontrol-esphome-p4-86 \
-  esphome compile /config/builds/esp32-p4-86.factory.yaml
-```
-
-The same container can later compile and upload the local development config
-over the network. Use an explicit IP address so ESPHome does not wait for an
-interactive target selection:
-
-```bash
-docker exec espcontrol-esphome-p4-86 \
-  esphome \
-  -s firmware_version dev \
-  -s espcontrol_component_url file:///config \
-  run /config/devices/esp32-p4-86/dev.yaml \
-  --device <device-ip> \
-  --no-logs
-```
-
-On macOS, a `/dev/cu.usbmodem...` device is not automatically exposed inside a
-Colima VM or its containers. Either configure USB passthrough into Colima and
-map the resulting Linux serial device into the container, or install the pinned
-ESPHome version from `.github/esphome.env` on the host and flash natively:
-
-```bash
-python3 scripts/local_esphome.py devices/esp32-p4-86/dev.yaml run \
-  --device /dev/cu.usbmodem...
-```
-
-Verify the panel's P3 silkscreen and LD2410 power, ground, TX, RX, and optional
-OUT wiring before powering the sensor or flashing the panel.
-
 ## Generated Device Outputs
 
 Device-profile changes can regenerate:
