@@ -3124,7 +3124,8 @@ export const CARD_CONTRACT_CARDS: Readonly<Record<string, CardTypeSpec>> = {
             "value": [
               "icon",
               "text",
-              "time"
+              "time",
+              "binary"
             ],
             "negate": true
           }
@@ -3133,7 +3134,8 @@ export const CARD_CONTRACT_CARDS: Readonly<Record<string, CardTypeSpec>> = {
           "precisionNot": [
             "icon",
             "text",
-            "time"
+            "time",
+            "binary"
           ]
         }
       },
@@ -3356,7 +3358,8 @@ export const CARD_CONTRACT_CARDS: Readonly<Record<string, CardTypeSpec>> = {
     "hidden": true,
     "domains": [
       "sensor",
-      "text_sensor"
+      "text_sensor",
+      "binary_sensor"
     ],
     "default": {
       "entity": "",

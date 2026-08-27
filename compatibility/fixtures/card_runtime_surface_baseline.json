@@ -637,7 +637,7 @@
         },
         "preview": {
           "available": true,
-          "fingerprint": "67040f16df2e7dbb"
+          "fingerprint": "dd801e375d6c7d01"
         }
       },
       "firmware": {
@@ -2376,6 +2376,37 @@
         "preview": {
           "available": true,
           "fingerprint": "e53c2fb5cf7c9bbb"
+        }
+      },
+      "firmware": {
+        "family": "SENSOR"
+      },
+      "lifecycle": {
+        "subscriptions": [
+          "local"
+        ],
+        "actions": [
+          "none"
+        ],
+        "modalOwner": "none"
+      }
+    },
+    {
+      "name": "sensor: local_binary",
+      "sourceKind": "contract",
+      "sourceType": "sensor",
+      "mode": "local_binary",
+      "canonicalType": "sensor",
+      "web": {
+        "registration": "sensor",
+        "picker": {
+          "main": true,
+          "subpage": true,
+          "infoOnly": true
+        },
+        "preview": {
+          "available": true,
+          "fingerprint": "254d7b820fcab549"
         }
       },
       "firmware": {

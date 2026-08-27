@@ -985,6 +985,7 @@ inline void grid_phase1(
   set_display_temperature_unit(cfg.temperature_unit, cfg.timezone);
   const DisplayProfile display = display_profile_from_grid_config(cfg);
   display_activate_profile(display);
+  clear_local_sensor_controls();
   // Clear image references before visual setup removes their old LVGL widgets.
   espcontrol::cards::image_driver_reset_pool(cfg);
   int NS = bounded_grid_slots(cfg.num_slots);

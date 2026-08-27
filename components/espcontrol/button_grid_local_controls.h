@@ -87,79 +87,13 @@ inline void send_local_action(const std::string &key) {
 
 // ── Local sensor controls ─────────────────────────────────────────────
 //
-// Displays a live value from any ESPHome sensor/text_sensor on the device.
+// Displays a live value from any ESPHome sensor/text_sensor/binary_sensor on the device.
 // The device auto-subscribes to sensor callbacks; send_local_sensor_update()
 // is available as a fallback for computed/non-entity values.
 
-struct LocalSensorControl {
-  std::string key;
-  bool is_text;
-  int precision;
-  lv_obj_t *sensor_lbl;
-  lv_obj_t *text_lbl;
-  lv_obj_t *owner;
-};
-
-inline std::vector<LocalSensorControl> &local_sensor_registry() {
-  static std::vector<LocalSensorControl> sensors;
-  return sensors;
-}
-
-struct LocalSensorCallbackBinding {
-  std::string key;
-  bool is_text = false;
-};
-
-inline std::vector<LocalSensorCallbackBinding> &local_sensor_callback_bindings() {
-  static std::vector<LocalSensorCallbackBinding> bindings;
-  return bindings;
-}
-
-inline bool local_sensor_callback_registered(const std::string &key, bool is_text) {
-  for (const auto &binding : local_sensor_callback_bindings()) {
-    if (binding.key == key && binding.is_text == is_text) return true;
-  }
-  local_sensor_callback_bindings().push_back({key, is_text});
-  return false;
-}
-
-inline bool local_sensor_apply_value(const std::string &key, float value) {
-  if (std::isnan(value)) return false;
-  bool applied = false;
-  for (const auto &control : local_sensor_registry()) {
-    if (control.key != key || control.is_text || !control.sensor_lbl) continue;
-    char buffer[32];
-    if (control.precision == 1) snprintf(buffer, sizeof(buffer), "%.1f", value);
-    else if (control.precision == 2) snprintf(buffer, sizeof(buffer), "%.2f", value);
-    else snprintf(buffer, sizeof(buffer), "%.0f", value);
-    lv_label_set_text(control.sensor_lbl, buffer);
-    applied = true;
-  }
-  return applied;
-}
-
-inline bool local_sensor_apply_text(const std::string &key, const std::string &value) {
-  bool applied = false;
-  for (const auto &control : local_sensor_registry()) {
-    if (control.key != key || !control.is_text || !control.text_lbl) continue;
-    set_wrapped_button_label_text(control.text_lbl, value);
-    applied = true;
-  }
-  return applied;
-}
+#include "button_grid_local_sensor_runtime.h"
 
 #ifdef USE_WEBSERVER
-inline std::string local_endpoint_json_escape(const std::string &s) {
-  std::string out;
-  out.reserve(s.size() + 4);
-  for (char c : s) {
-    if (c == '"') out += "\\\"";
-    else if (c == '\\') out += "\\\\";
-    else out += c;
-  }
-  return out;
-}
-
 class LocalActionHandler : public esphome::web_server_idf::AsyncWebHandler {
  public:
   bool canHandle(esphome::web_server_idf::AsyncWebServerRequest *request) const override {
@@ -215,28 +149,32 @@ class LocalSensorHandler : public esphome::web_server_idf::AsyncWebHandler {
     json.reserve(512);
     json = "[";
     bool first = true;
-    auto append = [&](const std::string &key, const std::string &name,
-                      const std::string &unit, const char *type, bool internal) {
-      if (!first) json += ",";
-      first = false;
-      json += "{\"key\":\"" + local_endpoint_json_escape(key) + "\",\"name\":\"" + local_endpoint_json_escape(name) +
-              "\",\"unit\":\"" + local_endpoint_json_escape(unit) + "\",\"type\":\"" + type + "\"";
-      if (internal) json += ",\"internal\":true";
-      json += "}";
-    };
     char oid_buf[128];
 #ifdef USE_SENSOR
     for (auto *s : esphome::App.get_sensors()) {
       bool internal = (int) s->get_entity_category() != 0;
-      append(std::string(s->get_object_id_to(oid_buf).c_str()), std::string(s->get_name()),
-             std::string(s->get_unit_of_measurement_ref()), "numeric", internal);
+      append_local_sensor_json_entry(
+        json, first, std::string(s->get_object_id_to(oid_buf).c_str()),
+        std::string(s->get_name()), std::string(s->get_unit_of_measurement_ref()),
+        "numeric", internal);
     }
 #endif
 #ifdef USE_TEXT_SENSOR
     for (auto *ts : esphome::App.get_text_sensors()) {
       bool internal = (int) ts->get_entity_category() != 0;
-      append(std::string(ts->get_object_id_to(oid_buf).c_str()), std::string(ts->get_name()),
-             "", "text", internal);
+      append_local_sensor_json_entry(
+        json, first, std::string(ts->get_object_id_to(oid_buf).c_str()),
+        std::string(ts->get_name()), "", "text", internal);
+    }
+#endif
+#ifdef USE_BINARY_SENSOR
+    char device_class_buf[esphome::MAX_DEVICE_CLASS_LENGTH];
+    for (auto *bs : esphome::App.get_binary_sensors()) {
+      bool internal = (int) bs->get_entity_category() != 0;
+      append_local_sensor_json_entry(
+        json, first, std::string(bs->get_object_id_to(oid_buf).c_str()),
+        std::string(bs->get_name()), "", "binary", internal,
+        std::string(bs->get_device_class_to(device_class_buf)));
     }
 #endif
     json += "]";

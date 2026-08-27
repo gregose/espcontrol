@@ -20,7 +20,8 @@
           "value": [
             "icon",
             "text",
-            "time"
+            "time",
+            "binary"
           ],
           "negate": true
         }
@@ -29,7 +30,8 @@
         "precisionNot": [
           "icon",
           "text",
-          "time"
+          "time",
+          "binary"
         ]
       }
     },

@@ -10,6 +10,11 @@ import {
     cardContractPickerKey,
 } from "../generated/card_contract";
 import { escHtml, iconSlug } from "../application/ui_primitives";
+import {
+    localBinarySensorDefaultIcons,
+    localSensorEntriesForMode,
+    localSensorModeForType,
+} from "../features/sensor_card_mode_controller";
 import type { CardRegistry, CardUiServices } from "../application/card_registry";
 import type { ConfigSensorOptionsFeature } from "../application/config_sensor_options";
 import type { ControlsFieldsFeature } from "../application/controls_fields";
@@ -72,6 +77,8 @@ export function registerSensorCardTypes(
                     return "icon";
                 if (b.precision === "time")
                     return "time";
+                if (b.precision === "binary")
+                    return "binary";
                 return b.precision === "text" ? "text" : "numeric";
             },
         },
@@ -79,7 +86,8 @@ export function registerSensorCardTypes(
             label: "Large Sensor Numbers",
             idSuffix: "large-sensor-numbers",
             supported: function (this: any, b?: any) {
-                return !sensorCardIsLocal(b) && b.precision !== "icon" && b.precision !== "text" && b.precision !== "time";
+                return !sensorCardIsLocal(b) && b.precision !== "icon" && b.precision !== "text" &&
+                    b.precision !== "time" && b.precision !== "binary";
             },
         },
         activeColor: {
@@ -106,7 +114,7 @@ export function registerSensorCardTypes(
             b.icon_on = "Auto";
             if (!b.precision)
                 b.precision = "";
-            if (b.precision !== "icon" && b.precision !== "text")
+            if (b.precision !== "icon" && b.precision !== "text" && b.precision !== "binary")
                 b.icon = "Auto";
             b.options = normalizeSensorOptions(b.options, b.precision);
         },
@@ -374,7 +382,9 @@ export function registerSensorCardTypes(
     function renderSensorLocalSettings(this: any, panel?: any, b?: any, slot?: any, helpers?: any) {
         b.type = "sensor";
         b.sensor = SENSOR_CARD_LOCAL_SENSOR;
-        var isTextMode: any = b.precision === "text";
+        var displayMode: any = sensorCardModeController().displayMode(b);
+        var isTextMode: any = displayMode === "text";
+        var isBinaryMode: any = displayMode === "binary";
         var showAll: any = false;
         var fetchedSensors: any = null;
         var modeField: any = document.createElement("div");
@@ -388,8 +398,12 @@ export function registerSensorCardTypes(
         var textBtn: any = document.createElement("button");
         textBtn.type = "button";
         textBtn.textContent = "Text";
+        var binaryBtn: any = document.createElement("button");
+        binaryBtn.type = "button";
+        binaryBtn.textContent = "Binary";
         modeSeg.appendChild(numericBtn);
         modeSeg.appendChild(textBtn);
+        modeSeg.appendChild(binaryBtn);
         modeField.appendChild(modeSeg);
         panel.appendChild(modeField);
         var pickerSection: any = document.createElement("div");
@@ -423,7 +437,7 @@ export function registerSensorCardTypes(
             opt.textContent = precOpts[i][1];
             precisionSelect.appendChild(opt);
         }
-        precisionSelect.value = !isTextMode ? (b.precision || "0") : "0";
+        precisionSelect.value = displayMode === "numeric" ? (b.precision || "0") : "0";
         precisionSelect.addEventListener("change", function (this: any) {
             b.precision = this.value === "0" ? "" : this.value;
             helpers.saveField("precision", b.precision);
@@ -438,31 +452,58 @@ export function registerSensorCardTypes(
         });
         textSection.appendChild(textIconPicker);
         panel.appendChild(textSection);
+        var binarySection: any = condField();
+        var binaryLabelField: any = helpers.renderCardTextField(binarySection, b, helpers, {
+            label: "Label",
+            idSuffix: "binary-label",
+            field: "label",
+            placeholder: "e.g. Hallway Presence",
+            rerender: true,
+        });
+        var binaryLabelInp: any = binaryLabelField.input;
+        var binaryOffIconPicker: any = helpers.renderCardIconPicker(binarySection, b, helpers, {
+            pickerIdSuffix: "binary-icon-off-picker",
+            idSuffix: "binary-icon-off",
+            field: "icon",
+            fallback: "Circle Outline",
+            label: "Off Icon",
+        });
+        var binaryOnIconPicker: any = helpers.renderCardIconPicker(binarySection, b, helpers, {
+            pickerIdSuffix: "binary-icon-on-picker",
+            idSuffix: "binary-icon-on",
+            field: "icon_on",
+            fallback: "Check",
+            label: "On Icon",
+        });
+        var binaryActiveColorToggle: any = helpers.renderCardActiveColorToggle(
+            binarySection, b, helpers, SENSOR_CARD_METADATA.activeColor,
+            setSensorActiveColorEnabled);
+        panel.appendChild(binarySection);
+        function syncLocalIconPicker(this: any, picker?: any, value?: any) {
+            var preview: any = picker.querySelector(".sp-icon-picker-preview");
+            if (preview)
+                preview.className = "sp-icon-picker-preview mdi mdi-" + iconSlug(value);
+            var input: any = picker.querySelector(".sp-icon-picker-input");
+            if (input)
+                input.value = value;
+        }
         function setMode(this: any, mode?: any, persist?: any) {
-            isTextMode = mode === "text";
-            numericBtn.classList.toggle("active", !isTextMode);
+            displayMode = mode === "text" || mode === "binary" ? mode : "numeric";
+            isTextMode = displayMode === "text";
+            isBinaryMode = displayMode === "binary";
+            numericBtn.classList.toggle("active", displayMode === "numeric");
             textBtn.classList.toggle("active", isTextMode);
-            numericSection.classList.toggle("sp-visible", !isTextMode);
+            binaryBtn.classList.toggle("active", isBinaryMode);
+            numericSection.classList.toggle("sp-visible", displayMode === "numeric");
             textSection.classList.toggle("sp-visible", isTextMode);
+            binarySection.classList.toggle("sp-visible", isBinaryMode);
             if (!persist)
                 return;
-            if (isTextMode) {
-                b.precision = "text";
-                b.label = "";
-                b.unit = "";
-                b.icon_on = "Auto";
-                labelInp.value = "";
-                unitInp.value = "";
-                helpers.saveField("precision", "text");
-                helpers.saveField("label", "");
-                helpers.saveField("unit", "");
-                helpers.saveField("icon_on", "Auto");
-            }
-            else {
-                b.precision = "";
-                b.icon = "Auto";
-                helpers.saveField("precision", "");
-                helpers.saveField("icon", "Auto");
+            var transition: any = sensorCardModeController().selectDisplayMode(b, displayMode);
+            labelInp.value = b.label;
+            binaryLabelInp.value = b.label;
+            unitInp.value = b.unit;
+            if (displayMode === "numeric") {
                 var iconPreview: any = textIconPicker.querySelector(".sp-icon-picker-preview");
                 if (iconPreview)
                     iconPreview.className = "sp-icon-picker-preview mdi mdi-cog";
@@ -471,6 +512,8 @@ export function registerSensorCardTypes(
                     iconInput.value = "Auto";
                 precisionSelect.value = "0";
             }
+            transition.fields.forEach(function (field: any) { helpers.saveField(field, b[field]); });
+            binaryActiveColorToggle.input.checked = sensorActiveColorEnabled(b);
         }
         numericBtn.addEventListener("click", function (this: any) {
             setMode("numeric", true);
@@ -482,14 +525,16 @@ export function registerSensorCardTypes(
             if (fetchedSensors)
                 buildDropdown(fetchedSensors);
         });
-        setMode(isTextMode ? "text" : "numeric", false);
+        binaryBtn.addEventListener("click", function (this: any) {
+            setMode("binary", true);
+            if (fetchedSensors)
+                buildDropdown(fetchedSensors);
+        });
+        setMode(displayMode, false);
         function buildDropdown(this: any, sensors?: any) {
             pickerSection.innerHTML = "";
             pickerSection.className = "";
-            var wantType: any = isTextMode ? "text" : "numeric";
-            var filtered: any = sensors.filter(function (this: any, s?: any) {
-                return s.type === wantType && (showAll || !s.internal);
-            });
+            var filtered: any = localSensorEntriesForMode(sensors, displayMode, showAll);
             var sf: any = document.createElement("div");
             sf.className = "sp-field";
             sf.appendChild(helpers.fieldLabel("Local Sensor", helpers.idPrefix + "sensor-sel"));
@@ -503,7 +548,7 @@ export function registerSensorCardTypes(
             filtered.forEach(function (this: any, s?: any) {
                 var opt: any = document.createElement("option");
                 opt.value = s.key;
-                opt.textContent = s.name + (s.type === "text" ? " (text)" : "");
+                opt.textContent = s.name + (s.type === "numeric" ? "" : " (" + s.type + ")");
                 if (s.key === b.entity)
                     opt.selected = true;
                 sel.appendChild(opt);
@@ -524,17 +569,31 @@ export function registerSensorCardTypes(
                 var sensor: any = sensors.find(function (this: any, s?: any) { return s.key === key; });
                 if (!sensor)
                     return;
+                setMode(localSensorModeForType(sensor.type), true);
                 if (!b.label) {
                     b.label = sensor.name;
                     labelInp.value = sensor.name;
+                    binaryLabelInp.value = sensor.name;
                     helpers.saveField("label", sensor.name);
                 }
-                if (!b.unit && sensor.unit) {
+                if (sensor.type === "numeric" && !b.unit && sensor.unit) {
                     b.unit = sensor.unit;
                     unitInp.value = sensor.unit;
                     helpers.saveField("unit", sensor.unit);
                 }
-                setMode(sensor.type === "text" ? "text" : "numeric", true);
+                if (sensor.type === "binary") {
+                    var defaults: any = localBinarySensorDefaultIcons(sensor.device_class);
+                    if (!b.icon || b.icon === "Auto") {
+                        b.icon = defaults.off;
+                        helpers.saveField("icon", b.icon);
+                    }
+                    if (!b.icon_on || b.icon_on === "Auto") {
+                        b.icon_on = defaults.on;
+                        helpers.saveField("icon_on", b.icon_on);
+                    }
+                    syncLocalIconPicker(binaryOffIconPicker, b.icon);
+                    syncLocalIconPicker(binaryOnIconPicker, b.icon_on);
+                }
             });
             sf.appendChild(sel);
             pickerSection.appendChild(sf);
@@ -580,6 +639,15 @@ export function registerSensorCardTypes(
         });
     }
     function sensorLocalPreview(this: any, b?: any, helpers?: any) {
+        if (b.precision === "binary") {
+            var defaults: any = localBinarySensorDefaultIcons("");
+            var binaryIconName: any = b.icon && b.icon !== "Auto" ? iconSlug(b.icon) : iconSlug(defaults.off);
+            var binaryLabel: any = (b.label || b.entity || "Local Sensor") + ": Off";
+            return {
+                iconHtml: '<span class="sp-btn-icon mdi mdi-' + binaryIconName + '"></span>',
+                labelHtml: cardBadgeLabelHtml(helpers, binaryLabel, SENSOR_CARD_METADATA.preview.iconBadge),
+            };
+        }
         if (b.precision === "text") {
             var iconName: any = b.icon && b.icon !== "Auto" ? iconSlug(b.icon) : "cog";
             return {

@@ -180,7 +180,7 @@ struct ParsedCfg {
   std::string sensor;      // 4  sensor entity, cover mode, or action name for Action cards
   std::string unit;        // 5  unit suffix for sensor display
   std::string type;        // 6  button type: "" (toggle), action, sensor, calendar, timezone, weather_forecast, slider, light_brightness, light_switch, fan_*, cover, garage, gate, lock, alarm, alarm_action, media, climate, push, webhook, todo, internal, subpage
-  std::string precision;   // 7  decimal places for sensors; "text" = text sensor mode
+  std::string precision;   // 7  decimal places for sensors; "text"/"binary" = local value mode
   std::string options;     // 8  comma-delimited card options
 };
 
@@ -642,6 +642,7 @@ inline std::string sensor_card_options_normalized(const std::string &options,
                                                   const std::string &precision) {
   std::string out;
   if (precision != "icon" && precision != "text" && precision != "time" &&
+      precision != "binary" &&
       (cfg_option_token_present(options, "large_numbers") ||
        large_numbers_explicitly_disabled(options))) {
     append_large_numbers_option(out, options);
@@ -701,10 +702,22 @@ inline void normalize_saved_config_sensor_fields(ParsedCfg &p,
     p.icon_on = "Auto";
   }
   if (!sensor_card_local_sensor(p)) return;
+  if (p.precision == "binary") {
+    p.unit.clear();
+    p.options = cfg_option_token_present(p.options, "active_color")
+      ? "active_color" : "";
+    if (p.icon.empty()) p.icon = "Auto";
+    if (p.icon_on.empty()) p.icon_on = "Auto";
+    return;
+  }
   p.icon_on = "Auto";
   p.options.clear();
-  if (p.precision != "text" && p.precision != "1" && p.precision != "2") p.precision.clear();
-  if (p.precision != "text" && (p.icon.empty() || p.icon == "Auto")) p.icon = "Auto";
+  if (p.precision != "text" && p.precision != "1" && p.precision != "2") {
+    p.precision.clear();
+  }
+  if (p.precision != "text" && (p.icon.empty() || p.icon == "Auto")) {
+    p.icon = "Auto";
+  }
 }
 
 inline std::string normalize_subpage_kind(const std::string &value) {

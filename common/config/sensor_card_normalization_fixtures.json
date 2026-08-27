@@ -135,6 +135,21 @@
     }
   },
   {
+    "name": "local binary sensor preserves its discriminator icons and active colour",
+    "input": "radar_presence;Radar Presence;Motion Sensor Off;Motion Sensor;local;ignored;sensor;binary;large_numbers,active_color,state_labels",
+    "expected": {
+      "entity": "radar_presence",
+      "label": "Radar Presence",
+      "icon": "Motion Sensor Off",
+      "icon_on": "Motion Sensor",
+      "sensor": "local",
+      "unit": "",
+      "type": "sensor",
+      "precision": "binary",
+      "options": "active_color"
+    }
+  },
+  {
     "name": "legacy local sensor subtype normalizes to sensor",
     "input": "room_text;Room Text;Auto;Auto;;ignored;local_sensor;text;large_numbers,state_labels,state_input=on,state_output=On",
     "expected": {

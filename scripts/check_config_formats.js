@@ -699,8 +699,8 @@ assert.deepStrictEqual(
 );
 assert.deepStrictEqual(
   Array.from(sensorOptionByName.large_numbers.supportedWhen.precisionNot),
-  ["icon", "text", "time"],
-  "sensor large-number option spec excludes icon, text, and time sensor modes"
+  ["icon", "text", "time", "binary"],
+  "sensor large-number option spec excludes icon, text, time, and binary sensor modes"
 );
 assert.strictEqual(
   hooks.cardContractOptionSupportedFor("sensor", "large_numbers", { precision: "" }),
@@ -711,6 +711,11 @@ assert.strictEqual(
   hooks.cardContractOptionSupportedFor("sensor", "large_numbers", { precision: "text" }),
   false,
   "sensor large-number option blocks text mode"
+);
+assert.strictEqual(
+  hooks.cardContractOptionSupportedFor("sensor", "large_numbers", { precision: "binary" }),
+  false,
+  "sensor large-number option blocks binary mode"
 );
 assert.strictEqual(
   hooks.cardContractOptionSupportedFor("sensor", "large_numbers", { precision: "icon" }),

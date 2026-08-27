@@ -2568,8 +2568,10 @@ def gen_saved_config_shadow_ts(data):
         "  if (config.type !== \"sensor\") return null;\n"
         "  if (config.sensor !== \"local\" && config.precision === \"time\") { config.unit = \"\"; config.icon = \"Auto\"; config.icon_on = \"Auto\"; }\n"
         "  if (config.sensor === \"local\") {\n"
+        "    const source = config.options;\n"
+        "    if ([\"binary\", \"text\", \"1\", \"2\"].indexOf(config.precision) < 0) config.precision = \"\";\n"
+        "    if (config.precision === \"binary\") { config.unit = \"\"; config.options = optionPresent(source, \"active_color\") ? \"active_color\" : \"\"; return config; }\n"
         "    config.icon_on = \"Auto\"; config.options = \"\";\n"
-        "    if ([\"text\", \"1\", \"2\"].indexOf(config.precision) < 0) config.precision = \"\";\n"
         "    if (config.precision !== \"text\" && (!config.icon || config.icon === \"Auto\")) config.icon = \"Auto\";\n"
         "    return config;\n"
         "  }\n"
@@ -2744,7 +2746,12 @@ def gen_saved_config_shadow_h(data):
         "  if (config.icon.empty()) config.icon = \"Auto\";\n",
         "  if (config.icon_on.empty()) config.icon_on = \"Auto\";\n",
         "  if (config.sensor != \"local\" && config.precision == \"time\") { config.unit.clear(); config.icon = \"Auto\"; config.icon_on = \"Auto\"; }\n",
-        "  if (config.sensor == \"local\") { config.icon_on = \"Auto\"; config.options.clear(); if (config.precision != \"text\" && config.precision != \"1\" && config.precision != \"2\") config.precision.clear(); if (config.precision != \"text\" && (config.icon.empty() || config.icon == \"Auto\")) config.icon = \"Auto\"; return true; }\n",
+        "  if (config.sensor == \"local\") {\n",
+        "    const std::string source = config.options;\n",
+        "    if (config.precision != \"binary\" && config.precision != \"text\" && config.precision != \"1\" && config.precision != \"2\") config.precision.clear();\n",
+        "    if (config.precision == \"binary\") { config.unit.clear(); config.options = cfg_option_token_present(source, \"active_color\") ? \"active_color\" : \"\"; return true; }\n",
+        "    config.icon_on = \"Auto\"; config.options.clear(); if (config.precision != \"text\" && (config.icon.empty() || config.icon == \"Auto\")) config.icon = \"Auto\"; return true;\n",
+        "  }\n",
         "  const std::string source = config.options; std::string out;\n",
         "  if (config.precision != \"icon\" && config.precision != \"text\" && config.precision != \"time\") append_large_numbers_option(out, source);\n",
         "  if (config.precision != \"time\" && cfg_option_token_present(source, \"active_color\")) saved_config_shadow_append_option(out, \"active_color\");\n",

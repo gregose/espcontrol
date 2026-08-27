@@ -276,7 +276,8 @@
         { "name": "time", "config": { "sensor": "sensor.example", "precision": "time" }, "lifecycle": { "subscriptions": ["state", "attributes"], "actions": ["none"], "modalOwner": "none" } },
         { "name": "text", "config": { "sensor": "sensor.example", "precision": "text" } },
         { "name": "icon", "config": { "sensor": "binary_sensor.example", "precision": "icon" } },
-        { "name": "local", "config": { "entity": "room_temp", "sensor": "local", "precision": "1" }, "lifecycle": { "subscriptions": ["local"], "actions": ["none"], "modalOwner": "none" } }
+        { "name": "local", "config": { "entity": "room_temp", "sensor": "local", "precision": "1" }, "lifecycle": { "subscriptions": ["local"], "actions": ["none"], "modalOwner": "none" } },
+        { "name": "local_binary", "config": { "entity": "radar_presence", "sensor": "local", "precision": "binary" }, "lifecycle": { "subscriptions": ["local"], "actions": ["none"], "modalOwner": "none" } }
       ]
     },
     "local_sensor": {

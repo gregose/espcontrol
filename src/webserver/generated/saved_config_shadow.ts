@@ -362,8 +362,10 @@ export function normalizeSavedConfigSensorShadow(input: Partial<CardConfig>): Ca
   if (config.type !== "sensor") return null;
   if (config.sensor !== "local" && config.precision === "time") { config.unit = ""; config.icon = "Auto"; config.icon_on = "Auto"; }
   if (config.sensor === "local") {
+    const source = config.options;
+    if (["binary", "text", "1", "2"].indexOf(config.precision) < 0) config.precision = "";
+    if (config.precision === "binary") { config.unit = ""; config.options = optionPresent(source, "active_color") ? "active_color" : ""; return config; }
     config.icon_on = "Auto"; config.options = "";
-    if (["text", "1", "2"].indexOf(config.precision) < 0) config.precision = "";
     if (config.precision !== "text" && (!config.icon || config.icon === "Auto")) config.icon = "Auto";
     return config;
   }

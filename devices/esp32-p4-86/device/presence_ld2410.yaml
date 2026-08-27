@@ -50,8 +50,9 @@ binary_sensor:
       name: "Radar Still Target"
   # Optional independent hardware presence line off the LD2410B OUT pin. This is
   # a plain GPIO read, independent of UART parsing - the fastest/most robust wake
-  # source for a later screensaver phase. Reads low (unavailable behaviour is a
-  # steady level) when no sensor is attached.
+  # source for a later screensaver phase. The radar is configured for low when
+  # clear and high while occupied. An unplugged sensor also reads low through the
+  # pulldown, so absence stays logically clear without GPIO inversion.
   - platform: gpio
     name: "Radar Presence (OUT pin)"
     id: ld2410_out
@@ -209,8 +210,9 @@ esphome:
     - priority: -100
       then:
         - delay: 5s
+        # Keep OUT electrically low when clear and high while occupied.
         - select.set:
             id: ld2410_out_pin_level
-            option: high
+            option: low
         - delay: 1s
         - switch.turn_off: ld2410_bluetooth

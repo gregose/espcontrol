@@ -1945,10 +1945,10 @@
           "kind": "flag",
           "omitDefault": true,
           "applicability": [
-            { "source": "field", "name": "precision", "operator": "in", "value": ["icon", "text", "time"], "negate": true }
+            { "source": "field", "name": "precision", "operator": "in", "value": ["icon", "text", "time", "binary"], "negate": true }
           ],
           "supportedWhen": {
-            "precisionNot": ["icon", "text", "time"]
+            "precisionNot": ["icon", "text", "time", "binary"]
           }
         },
         {
@@ -2072,7 +2072,7 @@
       "allowInSubpage": true,
       "pickerKey": "sensor",
       "hidden": true,
-      "domains": ["sensor", "text_sensor"],
+      "domains": ["sensor", "text_sensor", "binary_sensor"],
       "default": {
         "entity": "",
         "label": "",

@@ -1,7 +1,7 @@
 #pragma once
 
 // Shared lifecycle driver for Home Assistant sensors and the local-sensor
-// compatibility form. Numeric, text, icon, duration, and local ESPHome values
+// compatibility form. Numeric, text, binary, icon, duration, and local ESPHome values
 // all use the same setup/binding path on the main grid and subpages.
 
 namespace espcontrol::cards {
@@ -21,6 +21,12 @@ inline bool sensor_driver_is_text(
   return sensor_driver_is_local(config, context)
     ? config.precision == "text"
     : is_text_sensor_card(config);
+}
+
+inline bool sensor_driver_is_binary(
+    const ParsedCfg &config, const Context &context) {
+  return sensor_driver_is_local(config, context) &&
+         config.precision == "binary";
 }
 
 inline void sensor_driver_apply_background(
@@ -44,6 +50,17 @@ inline bool sensor_driver_setup_visual(
 
   sensor_driver_apply_background(slot, palette);
   lv_obj_clear_flag(slot.btn, LV_OBJ_FLAG_CLICKABLE);
+
+  if (sensor_driver_is_binary(config, context)) {
+    lv_obj_clear_flag(slot.icon_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(slot.sensor_container, LV_OBJ_FLAG_HIDDEN);
+    const char *icon = (config.icon.empty() || config.icon == "Auto")
+      ? find_icon(local_binary_default_off_icon_name(""))
+      : find_icon(config.icon.c_str());
+    lv_label_set_text(slot.icon_lbl, icon);
+    set_wrapped_button_label_text(slot.text_lbl, "--");
+    return true;
+  }
 
   if (sensor_driver_is_text(config, context)) {
     setup_toggle_visual(slot, config);
@@ -113,41 +130,80 @@ inline bool sensor_driver_refresh_layout(
 inline bool sensor_driver_cleanup(
     BtnSlot &, const ParsedCfg &, const Context &context) {
   // Duration-card allocations are owned by the existing grid allocation
-  // tracker. Local sensor callbacks and controls retain their established
-  // registry lifetime across dashboard rebuilds.
+  // tracker. Local sensor controls reset centrally before each grid rebuild,
+  // while source callbacks remain registered for the device lifetime.
   return sensor_driver_matches(context);
 }
 
 inline void sensor_driver_register_local_value(
     BtnSlot &slot, const ParsedCfg &config) {
-  const bool is_text = config.precision == "text";
+  const LocalSensorValueKind kind = config.precision == "text"
+    ? LocalSensorValueKind::TEXT
+    : (config.precision == "binary"
+      ? LocalSensorValueKind::BINARY
+      : LocalSensorValueKind::NUMERIC);
   LocalSensorControl control;
   control.key = config.entity;
-  control.is_text = is_text;
+  control.kind = kind;
   control.precision = 0;
-  control.sensor_lbl = is_text ? nullptr : slot.sensor_lbl;
-  control.text_lbl = is_text ? slot.text_lbl : nullptr;
+  control.sensor_lbl = kind == LocalSensorValueKind::NUMERIC ? slot.sensor_lbl : nullptr;
+  control.text_lbl = kind == LocalSensorValueKind::NUMERIC ? nullptr : slot.text_lbl;
+  control.icon_lbl = kind == LocalSensorValueKind::BINARY ? slot.icon_lbl : nullptr;
   control.owner = slot.btn;
-  if (!is_text && !config.precision.empty()) {
+  control.label = config.label;
+  control.active_color = sensor_active_color_enabled(config);
+  if (kind == LocalSensorValueKind::NUMERIC && !config.precision.empty()) {
     control.precision = atoi(config.precision.c_str());
   }
 
-  auto &registry = local_sensor_registry();
-  size_t write_index = 0;
-  for (size_t read_index = 0; read_index < registry.size(); read_index++) {
-    if (registry[read_index].owner == control.owner) continue;
-    if (write_index != read_index) registry[write_index] = registry[read_index];
-    write_index++;
+#ifdef USE_BINARY_SENSOR
+  esphome::binary_sensor::BinarySensor *binary_source = nullptr;
+  if (kind == LocalSensorValueKind::BINARY) {
+    for (auto *esp_binary_sensor : esphome::App.get_binary_sensors()) {
+      char object_id[128];
+      if (std::string(esp_binary_sensor->get_object_id_to(object_id).c_str()) !=
+          control.key) {
+        continue;
+      }
+      char device_class[esphome::MAX_DEVICE_CLASS_LENGTH];
+      control.device_class =
+        std::string(esp_binary_sensor->get_device_class_to(device_class));
+      control.icon_off = find_icon(
+        (config.icon.empty() || config.icon == "Auto")
+          ? local_binary_default_off_icon_name(control.device_class)
+          : config.icon.c_str());
+      control.icon_on = find_icon(
+        (config.icon_on.empty() || config.icon_on == "Auto")
+          ? local_binary_default_on_icon_name(control.device_class)
+          : config.icon_on.c_str());
+      binary_source = esp_binary_sensor;
+      break;
+    }
   }
-  registry.resize(write_index);
-  registry.push_back(control);
+#endif
+
+  if (kind == LocalSensorValueKind::BINARY && !control.icon_off) {
+    control.icon_off = find_icon(
+      (config.icon.empty() || config.icon == "Auto")
+        ? local_binary_default_off_icon_name("")
+        : config.icon.c_str());
+    control.icon_on = find_icon(
+      (config.icon_on.empty() || config.icon_on == "Auto")
+        ? local_binary_default_on_icon_name("")
+        : config.icon_on.c_str());
+  }
+  local_sensor_register_control(control);
+  if (control.icon_lbl && control.icon_off) {
+    lv_label_set_text(control.icon_lbl, control.icon_off);
+  }
 
 #ifdef USE_SENSOR
-  if (!is_text) {
+  if (kind == LocalSensorValueKind::NUMERIC) {
     for (auto *esp_sensor : esphome::App.get_sensors()) {
       char object_id[128];
       if (std::string(esp_sensor->get_object_id_to(object_id).c_str()) != control.key) continue;
-      if (!local_sensor_callback_registered(control.key, false)) {
+      if (!local_sensor_callback_registered(
+            control.key, LocalSensorValueKind::NUMERIC)) {
         const std::string key = control.key;
         esp_sensor->add_on_state_callback([key](float value) {
           local_sensor_apply_value(key, value);
@@ -165,11 +221,12 @@ inline void sensor_driver_register_local_value(
   }
 #endif
 #ifdef USE_TEXT_SENSOR
-  if (is_text) {
+  if (kind == LocalSensorValueKind::TEXT) {
     for (auto *esp_text_sensor : esphome::App.get_text_sensors()) {
       char object_id[128];
       if (std::string(esp_text_sensor->get_object_id_to(object_id).c_str()) != control.key) continue;
-      if (!local_sensor_callback_registered(control.key, true)) {
+      if (!local_sensor_callback_registered(
+            control.key, LocalSensorValueKind::TEXT)) {
         const std::string key = control.key;
         esp_text_sensor->add_on_state_callback([key](std::string value) {
           local_sensor_apply_text(key, value);
@@ -180,6 +237,11 @@ inline void sensor_driver_register_local_value(
       }
       break;
     }
+  }
+#endif
+#ifdef USE_BINARY_SENSOR
+  if (binary_source) {
+    local_sensor_bind_binary_source(control.key, binary_source);
   }
 #endif
 }
