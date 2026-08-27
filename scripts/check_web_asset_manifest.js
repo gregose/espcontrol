@@ -112,7 +112,19 @@ async function verifyBridge() {
   assert(loaded[0] === `https://assets.example/webserver/${manifest.bundles[0].path}?device=esp32-p4-86`,
     "web bridge must use the device firmware version when the URL omits it");
 
+  let developmentFallbackStarts = 0;
+  sandbox.__ESPCONTROL_START_EMBEDDED__ = () => { developmentFallbackStarts += 1; };
+  const developmentLoaded = [];
+  sandbox.document.currentScript.getAttribute = () =>
+    "https://assets.example/webserver/www.js?device=esp32-p4-86&v=dev";
+  sandbox.document.head.appendChild = (script) => developmentLoaded.push(script.src);
+  vm.runInContext(fs.readFileSync(path.join(WEB_ROOT, "www.js"), "utf8"), sandbox);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(developmentLoaded.length === 0 && developmentFallbackStarts === 1,
+    "web bridge must prefer a branch firmware's embedded editor for development builds");
+
   const releaseLoaded = [];
+  delete sandbox.__ESPCONTROL_START_EMBEDDED__;
   sandbox.document.currentScript.getAttribute = () =>
     "https://assets.example/webserver/www.js?device=esp32-p4-86&v=v2.7.1";
   sandbox.document.head.appendChild = (script) => releaseLoaded.push(script.src);

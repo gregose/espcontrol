@@ -58,6 +58,7 @@ import { createSettingsScheduleSectionFeature } from "./application/settings_sch
 import { createSettingsCoverArtSectionFeature } from "./application/settings_cover_art_section";
 import { createSettingsSystemSectionFeature } from "./application/settings_system_section";
 import { createSettingsPageFeature, type SettingsPageFeature } from "./application/settings_page";
+import { createScreensaverPresenceSourceFeature } from "./application/screensaver_presence_source";
 import { createControlsFieldsFeature, type ControlsFieldsFeature } from "./application/controls_fields";
 import { createPreviewRenderFeature, type PreviewRenderFeature } from "./application/preview_render";
 import { createButtonSettingsSelectionFeature, type ButtonSettingsSelectionFeature } from "./application/button_settings_selection";
@@ -468,6 +469,9 @@ function composeApplicationContext(): ApplicationContext {
   configurationCodec.connectRequestApi(requestApi);
   const grid = createGridFeature(configurationCodec, runtime, layout, entityState, requestApi, renderQueue);
   fields = createControlsFieldsFeature(cards, configurationOptions, shell, requestApi);
+  const screensaverPresenceSource = createScreensaverPresenceSourceFeature(
+    runtime, configurationCodec, entityState, artworkPostApi, fields,
+  );
   const placement = createPreviewGridPlacementFeature({
     controller: previewPlacement,
     layout,
@@ -665,6 +669,7 @@ function composeApplicationContext(): ApplicationContext {
     statusPreview,
     grid,
     settingsHelpers,
+    screensaverPresenceSource,
     preview,
   );
   const backupModel = createBackupFeature({
@@ -798,6 +803,7 @@ function composeApplicationContext(): ApplicationContext {
     schedulePostApi,
     clockBarPostApi,
     settingsHelpers,
+    screensaverPresenceSource,
     preview,
     buttonSettings,
   });
@@ -856,7 +862,7 @@ function composeApplicationContext(): ApplicationContext {
     screensaverTimeout, screenRotation, appearance, clockBarState, entityState,
     shell, requestApi, statusPreview, artworkPostApi, schedulePostApi,
     clockBarPostApi, fields, settingsHelpers, scheduleSection, coverArtSection,
-    systemSection, preview,
+    systemSection, screensaverPresenceSource, preview,
   );
   requestApi.connectReconnect(appEvents.connect);
   return createApplicationContext({

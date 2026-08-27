@@ -58,6 +58,11 @@ The fallback hosted bundle URL is set as `js_url` in
 `common/device/core_infra.yaml`. Keep that path stable for older installed
 firmware and imported configs.
 
+Development firmware (`v=dev`) starts its bundled editor when one is present,
+so a hosted development bundle cannot replace newer branch UI. Add
+`?espcontrol_fallback` to the panel root URL to force the same embedded path
+when testing branch firmware against an older hosted bridge.
+
 ## Device API Shape
 
 The setup page reads and writes ESPHome web server entities exposed by the

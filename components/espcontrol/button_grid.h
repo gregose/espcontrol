@@ -40,6 +40,7 @@
 #include "button_grid_card_runtime.h"
 #include "button_grid_layout.h"
 #include "button_grid_display.h"
+#include "screensaver_presence_runtime.h"
 #include "button_grid_cards.h"
 #include "button_grid_modal.h"
 #include "button_grid_subscriptions.h"

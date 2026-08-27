@@ -50,7 +50,9 @@ import type { BackupContractFeature } from "./backup_contract";
 import type { SettingsPageHelpersFeature } from "./settings_page_helpers";
 import type { PreviewRenderFeature } from "./preview_render";
 import type { ButtonSettingsFeature } from "./button_settings";
+import type { ScreensaverPresenceSourceFeature } from "./screensaver_presence_source";
 import { legacyRestoreFailureMessage, restoreLegacyLayoutDocument } from "../features/legacy_layout_restore";
+import { decodeScreensaverPresenceSource } from "../features/screensaver_presence_source_controller";
 
 export interface AppBackupControllers {
     readonly layout: ApplicationLayoutState;
@@ -79,6 +81,7 @@ export interface AppBackupControllers {
     readonly schedulePostApi: ScreenSchedulePostApiFeature;
     readonly clockBarPostApi: ClockBarPostApiFeature;
     readonly settingsHelpers: Pick<SettingsPageHelpersFeature, "syncAlarmDelayAudioUi" | "syncClockScreensaverControls" | "syncCoverArtScreensaverUi" | "syncMediaPlayerSleepPreventionUi">;
+    readonly screensaverPresenceSource: Pick<ScreensaverPresenceSourceFeature, "localSupported" | "sync">;
     readonly preview: Pick<PreviewRenderFeature, "render">;
     readonly buttonSettings: Pick<ButtonSettingsFeature, "render">;
 }
@@ -307,10 +310,18 @@ export function createAppBackupFeature(controllers: AppBackupControllers): AppBa
     }
     function importConfig(this: any) {
         backupFileController.import(function (data: any) {
-                function applyBackupRestorePlan(this: any, plannedImport: any) {
+                async function applyBackupRestorePlan(this: any, plannedImport: any) {
                 var importedSettings: any = plannedImport.importedSettings;
                 var importedGridCols: any = plannedImport.importedGridCols;
                 var backupPlan: any = plannedImport.backupPlan;
+                if (decodeScreensaverPresenceSource(
+                    importedSettings.presenceSensorEntity).source === "local" &&
+                    !await controllers.screensaverPresenceSource.localSupported()) {
+                    throw Object.assign(
+                        new Error("Local screensaver sensors require newer display firmware."),
+                        { backupMessage: "Update the display firmware before restoring a backup that uses a local screensaver sensor." },
+                    );
+                }
                 cancelMainGridSave();
                 var activeGridCols: any = controllers.layout.gridCols;
                 controllers.layout.gridCols = importedGridCols;
@@ -554,7 +565,7 @@ export function createAppBackupFeature(controllers: AppBackupControllers): AppBa
                     syncAlarmDelayAudioUi();
                     if (els.setTemperatureUnit)
                         els.setTemperatureUnit.value = state.temperatureUnit;
-                    syncInput(els.setPresence, state.presenceEntity);
+                    controllers.screensaverPresenceSource.sync(state.presenceEntity);
                     syncInput(els.setSchedulePresence, state.scheduleSensorEntity);
                     syncMediaPlayerSleepPreventionUi();
                     syncInput(els.setCoverArtMediaPlayer, state.coverArtMediaPlayerEntity);
