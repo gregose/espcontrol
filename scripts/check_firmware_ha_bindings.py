@@ -3120,6 +3120,53 @@ def firmware_separate_schedule_sensor_errors(
         ):
             if marker not in grid_text:
                 errors.append(f"{grid_header_path.relative_to(root)}: retain {marker} for independent, refreshable sensor subscriptions")
+        local_presence_markers = (
+            "parse_screensaver_presence_selection(presence_entity)",
+            "ScreensaverPresenceSource::LOCAL",
+            "esphome::App.get_binary_sensors()",
+            "screensaver_presence_bind_local_source(",
+            "ScreensaverPresenceSource::HOME_ASSISTANT",
+            "screensaver_presence_router().select_home_assistant(",
+            "screensaver_presence_router().deliver_home_assistant(",
+        )
+        for marker in local_presence_markers:
+            if marker not in grid_text:
+                errors.append(
+                    f"{grid_header_path.relative_to(root)}: retain {marker} for local Screensaver presence routing"
+                )
+        local_branch = grid_text.find("ScreensaverPresenceSource::LOCAL")
+        ha_branch = grid_text.find("ScreensaverPresenceSource::HOME_ASSISTANT", local_branch)
+        if local_branch < 0 or ha_branch < local_branch:
+            errors.append(
+                f"{grid_header_path.relative_to(root)}: reject local Screensaver sources before Home Assistant subscription"
+            )
+
+    local_controls_path = grid_header_path.with_name("button_grid_local_controls.h")
+    if local_controls_path.exists():
+        local_controls_text = local_controls_path.read_text(encoding="utf-8")
+        if local_controls_text.count("->is_internal()") < 3:
+            errors.append(
+                f"{local_controls_path.relative_to(root)}: report ESPHome internal sensor visibility separately from entity category"
+            )
+
+    runtime_path = grid_header_path.with_name("screensaver_presence_runtime.h")
+    if not runtime_path.exists():
+        errors.append(
+            f"{runtime_path.relative_to(root)}: define the dedicated Screensaver presence callback registry"
+        )
+    else:
+        runtime_text = runtime_path.read_text(encoding="utf-8")
+        for marker in (
+            'local_prefix = "local:"',
+            "screensaver_presence_callback_registry()",
+            "source_ != ScreensaverPresenceSource::LOCAL",
+            "active_key_ != key",
+            "if (initialized_ && last_state_ == state) return false;",
+        ):
+            if marker not in runtime_text:
+                errors.append(
+                    f"{runtime_path.relative_to(root)}: retain {marker} for guarded, deduplicated local presence callbacks"
+                )
 
     for sensor_path in sensor_paths:
         sensor_text = sensor_path.read_text(encoding="utf-8")

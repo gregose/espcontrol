@@ -152,7 +152,7 @@ class LocalSensorHandler : public esphome::web_server_idf::AsyncWebHandler {
     char oid_buf[128];
 #ifdef USE_SENSOR
     for (auto *s : esphome::App.get_sensors()) {
-      bool internal = (int) s->get_entity_category() != 0;
+      bool internal = s->is_internal();
       append_local_sensor_json_entry(
         json, first, std::string(s->get_object_id_to(oid_buf).c_str()),
         std::string(s->get_name()), std::string(s->get_unit_of_measurement_ref()),
@@ -161,7 +161,7 @@ class LocalSensorHandler : public esphome::web_server_idf::AsyncWebHandler {
 #endif
 #ifdef USE_TEXT_SENSOR
     for (auto *ts : esphome::App.get_text_sensors()) {
-      bool internal = (int) ts->get_entity_category() != 0;
+      bool internal = ts->is_internal();
       append_local_sensor_json_entry(
         json, first, std::string(ts->get_object_id_to(oid_buf).c_str()),
         std::string(ts->get_name()), "", "text", internal);
@@ -170,7 +170,7 @@ class LocalSensorHandler : public esphome::web_server_idf::AsyncWebHandler {
 #ifdef USE_BINARY_SENSOR
     char device_class_buf[esphome::MAX_DEVICE_CLASS_LENGTH];
     for (auto *bs : esphome::App.get_binary_sensors()) {
-      bool internal = (int) bs->get_entity_category() != 0;
+      bool internal = bs->is_internal();
       append_local_sensor_json_entry(
         json, first, std::string(bs->get_object_id_to(oid_buf).c_str()),
         std::string(bs->get_name()), "", "binary", internal,

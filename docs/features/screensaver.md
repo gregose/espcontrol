@@ -41,13 +41,20 @@ When Screen Dimmed is selected, Manual brightness mode uses **Dimmed Screen Brig
 
 Instead of a timer, the screensaver is controlled by a motion or presence sensor (like a mmWave sensor mounted nearby). When someone is in the room, the screen stays on. When nobody is detected, the screen goes to sleep — and wakes up again when someone walks past.
 
-To use this, enter the name of your motion or presence sensor from Home Assistant (for example, `binary_sensor.hallway_presence`) in **Presence Entity**. This remains the Screensaver's own sensor; Night Schedule has a separate **Sensor Entity** when it uses Sensor mode.
+Choose the sensor **Source**:
+
+- **Home Assistant** uses the existing **Presence Entity** setting. Select or enter a Home Assistant entity such as `binary_sensor.hallway_presence`.
+- **Local Sensor** uses an ESPHome binary sensor that runs on the panel itself, such as an attached radar presence sensor or a binary OUT pin. Choose the sensor from the list; enable **Show internal sensors** if the sensor is hidden from normal Home Assistant use.
+
+Only binary local sensors are available for screensaver presence. Presence, occupancy, motion, and moving sensors are shown first, but generic binary sensors are also supported when they do not declare a device class. A Local Sensor continues to control wake and sleep while Home Assistant is offline because its state never leaves the panel.
+
+The selected source remains the Screensaver's own sensor. Night Schedule has a separate **Sensor Entity** when it uses Sensor mode, and its priority is unchanged.
 
 Below the presence entity, use **Then** to choose whether the panel dims the screen, shows the clock, or turns the display off when nobody is detected. This uses the same options as Timer mode.
 
 Presence wakes the panel from those dimmed, clock, or display-off states. When the normal cards or media cover art are already visible, presence does not change the page or restart the cover-art timer.
 
-Switching back to Timer keeps the sensor name saved, so you can return to Sensor mode later without typing it in again.
+Switching back to Timer keeps the selected source and sensor saved, so you can return to Sensor mode later without selecting it again.
 
 ::: tip
 Touching the screen or pressing its **Screen: Wake** button in Home Assistant always wakes it up, no matter which screensaver mode you're using.

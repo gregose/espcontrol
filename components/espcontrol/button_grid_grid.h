@@ -2343,6 +2343,11 @@ inline void grid_phase3(
     std::function<bool()> clock_bar_temperature_visible_callback = nullptr) {
   ESP_LOGI("sensors", "Phase 3: temp/presence/media subscriptions start (%lu ms)", esphome::millis());
   ha_reset_subscription_callbacks(HA_SUBSCRIPTION_SCOPE_PHASE3);
+  screensaver_presence_router().refresh_targets(
+      presence_detected_ptr,
+      []() { lv_disp_trig_activity(NULL); },
+      wake_callback,
+      sleep_callback);
   bool has_clock_bar_entities = configure_clock_bar_temperature_entities(
       temperature_entities, temperature_labels, temperature_label_count,
       main_page_obj, clock_bar_visible_callback,
@@ -2396,22 +2401,58 @@ inline void grid_phase3(
     );
   }
 
-  if (!presence_entity.empty()) {
+  const ScreensaverPresenceSelection presence_source =
+    parse_screensaver_presence_selection(presence_entity);
+  if (presence_source.source == ScreensaverPresenceSource::LOCAL) {
+#ifdef USE_BINARY_SENSOR
+    esphome::binary_sensor::BinarySensor *local_presence_sensor = nullptr;
+    if (!presence_source.key.empty()) {
+      for (auto *binary_sensor : esphome::App.get_binary_sensors()) {
+        char object_id[128];
+        if (std::string(binary_sensor->get_object_id_to(object_id).c_str()) ==
+            presence_source.key) {
+          local_presence_sensor = binary_sensor;
+          break;
+        }
+      }
+    }
+    if (!screensaver_presence_bind_local_source(
+          presence_source.key, local_presence_sensor)) {
+      ESP_LOGE(
+        "sensors",
+        "Screensaver local binary sensor '%s' was not found; using no presence",
+        presence_source.key.c_str());
+    }
+#else
+    const bool local_source_changed =
+      screensaver_presence_router().select_local(presence_source.key, nullptr);
+    if (local_source_changed || !screensaver_presence_router().initialized()) {
+      screensaver_presence_router().fail_local(presence_source.key);
+    }
+    ESP_LOGE(
+      "sensors",
+      "Screensaver local sensor '%s' requires binary sensor support; using no presence",
+      presence_source.key.c_str());
+#endif
+  } else if (presence_source.source ==
+             ScreensaverPresenceSource::HOME_ASSISTANT) {
+    screensaver_presence_router().select_home_assistant(presence_source.key);
     ha_subscribe_state(
-      presence_entity,
+      presence_source.key,
       std::function<void(esphome::StringRef)>(
-        [presence_detected_ptr, wake_callback, sleep_callback](esphome::StringRef state) {
+        [entity_id = presence_source.key](esphome::StringRef state) {
           if (state == "on") {
-            *presence_detected_ptr = true;
-            lv_disp_trig_activity(NULL);
-            if (wake_callback) wake_callback();
+            screensaver_presence_router().deliver_home_assistant(
+              entity_id, true);
           } else if (state == "off") {
-            *presence_detected_ptr = false;
-            if (sleep_callback) sleep_callback();
+            screensaver_presence_router().deliver_home_assistant(
+              entity_id, false);
           }
         }),
       HA_SUBSCRIPTION_SCOPE_PHASE3
     );
+  } else {
+    screensaver_presence_router().select_none();
   }
 
   if (!schedule_presence_entity.empty()) {

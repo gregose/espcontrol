@@ -153,7 +153,8 @@ export function createEntityStateFeature(dependencies: EntityStateDependencies) 
         clockBarTemperatureEntities().forEach(function (this: any, entityId?: any, index?: any) {
             rememberEntityName(entityId, "Clock Bar Temperature " + (index + 1));
         });
-        rememberEntityName(state.presenceEntity, "Presence Sensor");
+        if (!state.presenceEntity.startsWith("local:"))
+            rememberEntityName(state.presenceEntity, "Presence Sensor");
         rememberEntityName(state.coverArtMediaPlayerEntity, "Media Player");
         rememberEntityName(state.coverArtSecondaryMediaPlayerEntity, "External Source Media Player");
     }

@@ -225,6 +225,7 @@ async function installRoutes(context, slug, options = {}) {
         body: JSON.stringify({
           configuration: { read: true, write: true, document_versions: [1] },
           web_assets: { versions: [1] },
+          screensaver: { local_binary_sensor: true },
         }),
       });
       return;
@@ -239,6 +240,7 @@ async function installRoutes(context, slug, options = {}) {
         contentType: "application/json",
         body: JSON.stringify({
           configuration: { read: false, write: false, document_versions: [] },
+          screensaver: { local_binary_sensor: true },
         }),
       });
       return;
@@ -318,6 +320,23 @@ async function installRoutes(context, slug, options = {}) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(webAssetManifest),
+      });
+      return;
+    }
+    if (
+      requestUrl.hostname === "espcontrol.test" &&
+      requestUrl.pathname === "/local_sensors"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          { key: "temperature", name: "Temperature", type: "numeric" },
+          { key: "generic_input", name: "Generic Input", type: "binary" },
+          { key: "motion", name: "Motion", type: "binary", device_class: "motion" },
+          { key: "radar_presence", name: "Radar Presence", type: "binary", device_class: "presence" },
+          { key: "internal_presence", name: "Internal Presence", type: "binary", device_class: "presence", internal: true },
+        ]),
       });
       return;
     }
@@ -1326,6 +1345,50 @@ async function assertSettingsPage(page, label, options = {}, posts = []) {
   assert(await screensaverCard.isVisible(), `${label}: screensaver settings should render`);
   await brightnessCard.locator(".card-header").click();
   await screensaverCard.locator(".card-header").click();
+  await screensaverCard.getByRole("button", { name: "Sensor", exact: true }).click();
+  assert(
+    await screensaverCard.locator("#sp-set-presence").isVisible(),
+    `${label}: Home Assistant remains the default Screensaver sensor source`,
+  );
+  const presenceSourcePostStart = posts.length;
+  await screensaverCard.getByRole("button", { name: "Local Sensor", exact: true }).click();
+  const localPresenceSelect = screensaverCard.locator("#sp-set-presence-local");
+  await localPresenceSelect.waitFor({ state: "visible" });
+  assert.deepStrictEqual(
+    await localPresenceSelect.locator("option").evaluateAll((options) =>
+      options.map((option) => option.value).filter(Boolean)),
+    ["radar_presence", "motion", "generic_input"],
+    `${label}: local Screensaver picker filters and prioritizes binary presence sensors`,
+  );
+  assert.strictEqual(
+    await screensaverCard.locator("#sp-set-presence").isVisible(),
+    false,
+    `${label}: local source hides the Home Assistant autocomplete`,
+  );
+  await screensaverCard
+    .locator("#sp-set-presence-show-internal + .sp-toggle-track")
+    .click();
+  assert(
+    await localPresenceSelect.locator('option[value="internal_presence"]').count(),
+    `${label}: local Screensaver picker can show internal sensors`,
+  );
+  await localPresenceSelect.selectOption("radar_presence");
+  await waitForPost(
+    posts,
+    {
+      domain: "text",
+      name: "presence_sensor_entity",
+      action: "set",
+      value: "local:radar_presence",
+    },
+    `${label}: local Screensaver source uses the existing presence setting`,
+    presenceSourcePostStart,
+  );
+  await screensaverCard.getByRole("button", { name: "Home Assistant", exact: true }).click();
+  assert(
+    !(await screensaverCard.locator("#sp-set-presence").inputValue()).startsWith("local:"),
+    `${label}: local keys never leak into Home Assistant autocomplete`,
+  );
   await screensaverCard.getByRole("button", { name: "Timer", exact: true }).click();
   const dimmedAction = screensaverCard.locator("#sp-set-clock-mode");
   await dimmedAction.selectOption("dim");

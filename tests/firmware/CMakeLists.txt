@@ -23,6 +23,12 @@ target_compile_options(local_sensor_runtime_test PRIVATE -Wall -Wextra -Werror)
 target_include_directories(local_sensor_runtime_test PRIVATE ../../components/espcontrol)
 add_test(NAME local_sensor_runtime_test COMMAND local_sensor_runtime_test)
 
+add_executable(screensaver_presence_runtime_test screensaver_presence_runtime_test.cpp)
+target_compile_features(screensaver_presence_runtime_test PRIVATE cxx_std_17)
+target_compile_options(screensaver_presence_runtime_test PRIVATE -Wall -Wextra -Werror)
+target_include_directories(screensaver_presence_runtime_test PRIVATE ../../components/espcontrol)
+add_test(NAME screensaver_presence_runtime_test COMMAND screensaver_presence_runtime_test)
+
 add_executable(grid_navigation_service_test
   grid_navigation_service_test.cpp
   ../../components/espcontrol/espcontrol_app_core.cpp

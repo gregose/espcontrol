@@ -23,6 +23,8 @@ int main() {
                       std::strstr(capabilities.data(), "\"web_assets\"") != nullptr &&
                       std::strstr(capabilities.data(), "\"delivery\":\"manifest\"") !=
                           nullptr &&
+                      std::strstr(capabilities.data(),
+                                  "\"local_binary_sensor\":true") != nullptr &&
                       !write_panel_config_capabilities_json(nullptr,
                                                             capabilities.size(),
                                                             &capabilities_size);

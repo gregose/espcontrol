@@ -47,6 +47,7 @@ import type { AppStatusPreviewFeature } from "./app_status_preview";
 import type { GridFeature } from "./grid";
 import type { SettingsPageHelpersFeature } from "./settings_page_helpers";
 import type { PreviewRenderFeature } from "./preview_render";
+import type { ScreensaverPresenceSourceFeature } from "./screensaver_presence_source";
 
 export type SseStateHandler = (value?: any, data?: any, key?: any) => void;
 export type SseHandlerFactory = () => Record<string, SseStateHandler>;
@@ -70,6 +71,7 @@ export function createAppStateEventHandlersFeature(
     statusPreview: Pick<AppStatusPreviewFeature, "appendTimezoneOption" | "normalizeNetworkTransport" | "normalizeWifiStrengthPercent" | "syncInput" | "updateClock" | "updateClockBarItemUi" | "updateNetworkPreview" | "updateSunInfo" | "updateTempPreview">,
     grid: Pick<GridFeature, "applyButtonOrderValue">,
     settingsHelpers: Pick<SettingsPageHelpersFeature, "syncAlarmDelayAudioUi" | "syncClockScreensaverControls" | "syncCoverArtScreensaverUi" | "syncMediaPlayerSleepPreventionUi">,
+    screensaverPresenceSource: Pick<ScreensaverPresenceSourceFeature, "sync">,
     preview: Pick<PreviewRenderFeature, "render">,
 ): AppStateEventHandlersFeature {
     const { syncAlarmDelayAudioUi, syncClockScreensaverControls, syncCoverArtScreensaverUi, syncMediaPlayerSleepPreventionUi } = settingsHelpers;
@@ -295,7 +297,7 @@ export function createAppStateEventHandlersFeature(
             },
             "text-presence_sensor_entity": function (this: any, val?: any) {
                 state.presenceEntity = val;
-                syncInput(els.setPresence, val);
+                screensaverPresenceSource.sync(val);
                 if (state.screensaverMode === "") {
                     if (els.setSsMode)
                         els.setSsMode(getActiveScreensaverMode());
